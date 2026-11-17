@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-title" content="84㎡ 시세">
+<meta name="theme-color" content="#1f6feb">
+<title>경기 남부 84㎡ 매수 타이밍</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#e5e5ea;--panel:#f7f7f9;--a:#1f6feb;--b:#d97706;--up:#d1242f;--down:#1a7f37;--gray:#c7c7cc}
+@media (prefers-color-scheme:dark){:root{--bg:#111113;--fg:#f2f2f7;--muted:#98989f;--line:#2c2c2e;--panel:#1c1c1e;--a:#4c8dff;--b:#f59e0b;--up:#ff6b6b;--down:#4ade80;--gray:#48484a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:22px}
+h1{font-size:22px;margin:0}
+h2{font-size:16px;margin:0 0 6px}
+.muted{color:var(--muted);font-size:13px}
+select{font:inherit;font-size:16px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
+.lede{margin:0}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:640px){.cards{grid-template-columns:repeat(4,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+.card .label{font-size:12px;color:var(--muted)}
+.card .value{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.card .sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.chart text.val{fill:var(--fg)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{color:var(--muted);font-weight:500}
+.l{text-align:left}
+details{font-size:13px;color:var(--muted)}
+details p{margin:6px 0}
+.up{color:var(--up)}.down{color:var(--down)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>경기 남부 84㎡ 매수 타이밍</h1>
+    <div class="muted">국토교통부 실거래 신고 기준 · 최근 6개월 · <span id="updated"></span> 갱신</div>
+  </header>
+
+  <select id="area" aria-label="지역"></select>
+
+  <p class="lede" id="lede"></p>
+
+  <section class="cards">
+    <div class="card"><div class="label">84㎡ 매매 중위가 · 지난달</div><div class="value" id="cSale">—</div><div class="sub">전월 대비 <span id="cSaleMom">—</span></div></div>
+    <div class="card"><div class="label">매매 거래량 (전체 면적) · 지난달</div><div class="value" id="cTrades">—</div><div class="sub">전월 대비 <span id="cTradesMom">—</span></div></div>
+    <div class="card"><div class="label">84㎡ 전세 중위가 · 지난달</div><div class="value" id="cJeonse">—</div><div class="sub">전월 대비 <span id="cJeonseMom">—</span></div></div>
+    <div class="card"><div class="label">84㎡ 전세가율 · 지난달</div><div class="value" id="cRatio">—</div><div class="sub">전세 중위가 ÷ 매매 중위가</div></div>
+  </section>
+
+  <section>
+    <h2>월별 매매 거래량</h2>
+    <div class="muted">전체 면적 기준. 회색 막대는 이번 달로 아직 신고가 들어오는 중입니다.</div>
+    <div class="chart" id="volChart"></div>
+  </section>
+
+  <section>
+    <h2>84㎡ 매매·전세 중위가 (억)</h2>
+    <div class="legend"><span><span class="sw" style="background:var(--a)"></span>매매</span><span><span class="sw" style="background:var(--b)"></span>전세</span></div>
+    <div class="chart" id="priceChart"></div>
+  </section>
+
+  <section>
+    <h2>월별 지표</h2>
+    <div class="scroll"><table>
+      <thead><tr><th class="l">월</th><th>거래량</th><th>84㎡ 거래</th><th>84㎡ 매매</th><th>전월 대비</th><th>84㎡ 전세</th><th>전세가율</th></tr></thead>
+      <tbody id="monthRows"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>최근 84㎡ 실거래</h2>
+    <div class="muted">이번 달과 지난달 계약 중 최신 15건</div>
+    <div class="scroll"><table>
+      <thead><tr><th class="l">계약일</th><th class="l">단지</th><th class="l">동</th><th>층</th><th>준공</th><th>가격</th></tr></thead>
+      <tbody id="recentRows"></tbody>
+    </table></div>
+  </section>
+
+  <details>
+    <summary>지표 정의와 읽을 때 주의할 점</summary>
+    <p>84㎡는 전용면적 83㎡ 이상 86㎡ 미만 거래입니다. 해제된 계약은 뺐습니다.</p>
+    <p>중위가는 그 달에 어떤 단지가 거래됐는지에 따라 출렁입니다. 추세는 여러 달을 함께 보고, 관심 단지는 최근 실거래 표에서 직접 확인하세요.</p>
+    <p>신고 기한이 계약 후 30일이라 이번 달은 물론 지난달 수치도 월말까지 조금씩 늘어납니다.</p>
+    <p>동탄 세부 권역은 법정동으로 묶었습니다. 방교동·금곡동·중동은 동탄 전체에서만 집계됩니다.</p>
+    <p>전세는 월세가 0원인 계약만 셌습니다. 기준금리와 매물 수는 이 자료에 없습니다.</p>
+  </details>
+</main>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = (id) => document.getElementById(id);
+const eok = (v) => (v == null ? '—' : v.toFixed(2) + '억');
+const cnt = (v) => v.toLocaleString('ko-KR') + '건';
+const share = (v) => (v == null ? '—' : v.toFixed(1) + '%');
+const signed = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+};
+const label = (parent, x, y, text, cls) => {
+  const t = el('text', {x, y, 'text-anchor': 'middle', class: cls || ''}, parent);
+  t.textContent = text;
+};
+
+function setPct(id, v, toned) {
+  const n = $(id);
+  n.textContent = signed(v);
+  n.className = toned && v ? (v > 0 ? 'up' : 'down') : '';
+}
+
+function volChart(rows) {
+  const box = $('volChart');
+  box.replaceChildren();
+  const data = rows.slice().reverse();
+  const w = Math.max(300, box.clientWidth), h = 200, top = 20, bottom = 22;
+  const svg = el('svg', {viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': '월별 매매 거래량'}, box);
+  const max = Math.max(1, ...data.map((r) => r.trades));
+  const step = w / data.length, bw = step * 0.6;
+  data.forEach((r, i) => {
+    const bh = ((h - top - bottom) * r.trades) / max;
+    const x = i * step + (step - bw) / 2, y = h - bottom - bh;
+    el('rect', {x, y, width: bw, height: bh, rx: 3, fill: i === data.length - 1 ? 'var(--gray)' : 'var(--a)'}, svg);
+    label(svg, x + bw / 2, y - 5, r.trades.toLocaleString('ko-KR'), 'val');
+    label(svg, x + bw / 2, h - 6, r.ym.slice(2));
+  });
+}
+
+function priceChart(rows) {
+  const box = $('priceChart');
+  box.replaceChildren();
+  const data = rows.slice().reverse();
+  const vals = data.flatMap((r) => [r.sale, r.jeonse]).filter((v) => v != null);
+  if (!vals.length) { box.textContent = '이 기간에 84㎡ 거래가 없습니다'; return; }
+  const w = Math.max(300, box.clientWidth), h = 230, top = 24, bottom = 40;
+  const svg = el('svg', {viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': '84㎡ 매매·전세 중위가 추이'}, box);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.15 || 0.5;
+  const step = w / data.length;
+  const x = (i) => i * step + step / 2;
+  const y = (v) => top + ((hi + pad - v) / (hi - lo + 2 * pad)) * (h - top - bottom);
+  [['sale', 'var(--a)', -9], ['jeonse', 'var(--b)', 17]].forEach(([key, color, dy]) => {
+    const pts = data.map((r, i) => [i, r[key]]).filter(([, v]) => v != null);
+    if (pts.length > 1) {
+      el('path', {d: pts.map(([i, v], k) => (k ? 'L' : 'M') + x(i) + ',' + y(v)).join(''), fill: 'none', stroke: color, 'stroke-width': 2}, svg);
+    }
+    pts.forEach(([i, v]) => {
+      const last = i === data.length - 1;
+      el('circle', {cx: x(i), cy: y(v), r: 3.5, stroke: color, 'stroke-width': 2, fill: last ? 'var(--bg)' : color}, svg);
+      label(svg, x(i), y(v) + dy, v.toFixed(2), 'val');
+    });
+  });
+  data.forEach((r, i) => label(svg, x(i), h - 6, r.ym.slice(2)));
+}
+
+function cell(tr, text, left) {
+  const td = document.createElement('td');
+  if (left) td.className = 'l';
+  td.textContent = text;
+  tr.appendChild(td);
+}
+
+function render(key) {
+  const a = DATA.areas.find((x) => x.key === key) || DATA.areas[0];
+  const last = a.months[1];
+  $('cSale').textContent = eok(last.sale);
+  setPct('cSaleMom', last.saleMom, true);
+  $('cTrades').textContent = cnt(last.trades);
+  setPct('cTradesMom', last.tradesMom);
+  $('cJeonse').textContent = eok(last.jeonse);
+  setPct('cJeonseMom', last.jeonseMom);
+  $('cRatio').textContent = share(last.ratio);
+  $('lede').textContent = last.sale == null
+    ? `${a.name}에서 지난달(${last.ym}) 84㎡ 거래가 없었습니다. 전체 매매는 ${cnt(last.trades)}입니다.`
+    : `${a.name}의 84㎡는 지난달(${last.ym}) 중위 ${eok(last.sale)}에 거래됐고 전월 대비 ${signed(last.saleMom)} 움직였습니다. 전체 매매는 ${cnt(last.trades)}으로 전월 대비 ${signed(last.tradesMom)}입니다.`;
+  volChart(a.months);
+  priceChart(a.months);
+  const mt = $('monthRows');
+  mt.replaceChildren();
+  a.months.forEach((r) => {
+    const tr = document.createElement('tr');
+    [[r.ym, true], [r.trades.toLocaleString('ko-KR')], [r.trades84.toLocaleString('ko-KR')], [eok(r.sale)],
+     [signed(r.saleMom)], [eok(r.jeonse)], [share(r.ratio)]].forEach(([t, l]) => cell(tr, t, l));
+    mt.appendChild(tr);
+  });
+  const rt = $('recentRows');
+  rt.replaceChildren();
+  a.recent.forEach((r) => {
+    const tr = document.createElement('tr');
+    [[r.date, true], [r.apt, true], [r.dong, true], [r.floor], [r.built], [eok(r.price)]].forEach(([t, l]) => cell(tr, t, l));
+    rt.appendChild(tr);
+  });
+}
+
+const sel = $('area');
+const groups = [['화성 동탄구', (k) => !['yt', 'pd', 'gs'].includes(k)], ['수원', (k) => ['yt', 'pd', 'gs'].includes(k)]];
+groups.forEach(([name, test]) => {
+  const g = document.createElement('optgroup');
+  g.label = name;
+  DATA.areas.filter((a) => test(a.key)).forEach((a) => g.appendChild(new Option(a.name, a.key)));
+  sel.appendChild(g);
+});
+let saved = null;
+try { saved = localStorage.getItem('area'); } catch (e) {}
+if (saved && DATA.areas.some((a) => a.key === saved)) sel.value = saved;
+sel.addEventListener('change', () => {
+  try { localStorage.setItem('area', sel.value); } catch (e) {}
+  render(sel.value);
+});
+$('updated').textContent = DATA.updated;
+render(sel.value);
+let rw = window.innerWidth;
+window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); } });
+</script>
+</body>
+</html>
