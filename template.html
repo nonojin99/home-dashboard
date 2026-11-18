@@ -295,8 +295,9 @@ const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0,
 
 // 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
 // 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
-const ZONES = DATA.areas.filter((a) => a.dongs || !DATA.areas.some((b) => b.code === a.code && b.dongs));
-const zoneOf = (code, dong) => ZONES.find((z) => z.code === code && (!z.dongs || z.dongs.includes(dong)));
+const overlaps = (a, b) => a.codes.some((c) => b.codes.includes(c));
+const ZONES = DATA.areas.filter((a) => a.dongs || !DATA.areas.some((b) => b.dongs && overlaps(a, b)));
+const zoneOf = (code, dong) => ZONES.find((z) => z.codes.includes(code) && (!z.dongs || z.dongs.includes(dong)));
 const zoneColor = (z) => (z ? ZONE_COLORS[ZONES.indexOf(z) % ZONE_COLORS.length] : '#6b7280');
 
 function mapMsg(text) {
@@ -358,7 +359,7 @@ function showInfo(c, z) {
 function drawLegend(a) {
   const box = $('mapLegend');
   box.replaceChildren();
-  const zones = a.dongs ? [a] : ZONES.filter((z) => z.code === a.code);
+  const zones = a.dongs ? [a] : ZONES.filter((z) => overlaps(z, a));
   const add = (color, text) => {
     const s = document.createElement('span');
     const sw = document.createElement('span');
@@ -379,7 +380,8 @@ async function updateMap(a) {
   const token = ++mapState.token;
   mapState.overlays.forEach((o) => o.setMap(null));
   mapState.overlays = [];
-  const list = (DATA.complexes[a.code] || []).filter((c) => !a.dongs || a.dongs.includes(c.dong));
+  const list = a.codes.flatMap((code) => (DATA.complexes[code] || []).map((c) => ({...c, code})))
+    .filter((c) => !a.dongs || a.dongs.includes(c.dong));
   if (!list.length) { mapMsg('최근 3개월 84㎡ 거래가 없습니다'); return; }
   mapMsg('단지 위치를 찾는 중 (0/' + list.length + ')');
   const bounds = new kakao.maps.LatLngBounds();
@@ -388,12 +390,12 @@ async function updateMap(a) {
   const worker = async () => {
     while (queue.length) {
       const c = queue.shift();
-      const pos = await geocode(c, a.code);
+      const pos = await geocode(c, c.code);
       if (token !== mapState.token) return;
       done++;
       if (pos) {
         found++;
-        const z = zoneOf(a.code, c.dong);
+        const z = zoneOf(c.code, c.dong);
         const el = document.createElement('div');
         el.className = 'map-pin';
         el.style.background = zoneColor(z);
