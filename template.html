@@ -77,6 +77,13 @@ details p{margin:6px 0}
 .gb-send:disabled{opacity:.5}
 .gb-cancel{background:rgba(0,0,0,.08);color:#2b2b2b}
 main{padding-bottom:80px}
+.sf{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}
+.sf label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.sf input{font:inherit;font-size:16px;width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
+.sbtn{font:inherit;font-size:15px;width:100%;padding:11px;border:0;border-radius:10px;background:var(--a);color:#fff;cursor:pointer}
+td.dn{color:var(--down);font-weight:600}
+#searchSec .tw{overflow-x:auto}
+.sf label:first-child{grid-column:1/-1}
 </style>
 </head>
 <body>
@@ -138,6 +145,24 @@ main{padding-bottom:80px}
     <div class="scroll"><table>
       <thead><tr><th class="l">계약일</th><th class="l">단지</th><th class="l">동</th><th>층</th><th>준공</th><th>가격</th></tr></thead>
       <tbody id="recentRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="searchSec">
+    <h2>조건 검색 · 신고가 대비 싸게 거래된 84㎡</h2>
+    <div class="sf">
+      <label>지역<select id="sArea"></select></label>
+      <label>가격(억) 이상<input id="sMin" type="number" step="0.1" value="8"></label>
+      <label>가격(억) 이하<input id="sMax" type="number" step="0.1" value="9"></label>
+      <label>준공 연도 이후<input id="sBuilt" type="number" step="1" value="2015"></label>
+      <label>신고가 대비 하락(%) 이상<input id="sDrop" type="number" step="1" value="10"></label>
+      <label>거래 시점<select id="sMonths"><option value="1">최근 1개월</option><option value="3" selected>최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option></select></label>
+    </div>
+    <button id="sGo" class="sbtn">검색</button>
+    <p class="muted" id="sMsg">호가·매물이 아니라 실제 거래된 가격 기준입니다. 신고가는 2019년 이후 같은 단지 84㎡ 최고 거래가입니다.</p>
+    <div class="tw"><table id="sTable" hidden>
+      <thead><tr><th>단지</th><th>동</th><th>준공</th><th>층</th><th>거래가</th><th>신고가</th><th>하락</th><th>거래일</th></tr></thead>
+      <tbody id="sRows"></tbody>
     </table></div>
   </section>
 
@@ -655,5 +680,60 @@ $('gbAdmin').addEventListener('click', async () => {
 
 loadNotes();
 </script>
+<script>
+(function () {
+  const U = 'https://fpjgjwazqpfiffnsgume.supabase.co';
+  const K = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
+  const g = (id) => document.getElementById(id);
+  const sel = g('sArea');
+  const groups = {};
+  DATA.areas.forEach((a, i) => {
+    let og = groups[a.group];
+    if (!og) { og = document.createElement('optgroup'); og.label = a.group; sel.appendChild(og); groups[a.group] = og; }
+    const o = document.createElement('option');
+    o.value = i; o.textContent = a.name;
+    og.appendChild(o);
+  });
+  const td = (tr, text, cls) => { const c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); };
+  async function run() {
+    const a = DATA.areas[+sel.value];
+    const num = (id, d) => { const v = parseFloat(g(id).value); return isNaN(v) ? d : v; };
+    const body = {
+      p_sgg: a.codes, p_dongs: a.dongs && a.dongs.length ? a.dongs : null,
+      p_min: Math.round(num('sMin', 0) * 10000), p_max: Math.round(num('sMax', 100) * 10000),
+      p_build_min: Math.round(num('sBuilt', 0)), p_months: +g('sMonths').value,
+      p_min_drop: num('sDrop', 0), p_limit: 200,
+    };
+    const msg = g('sMsg'), tb = g('sRows');
+    msg.textContent = '검색 중…';
+    try {
+      const res = await fetch(U + '/rest/v1/rpc/search_trades', {
+        method: 'POST', headers: {apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      const rows = await res.json();
+      if (!res.ok) throw new Error(rows && rows.message || res.status);
+      tb.textContent = '';
+      rows.forEach((r) => {
+        const tr = document.createElement('tr');
+        td(tr, r.apt); td(tr, r.dong); td(tr, r.build_year || '—'); td(tr, r.floor == null ? '—' : r.floor + '층');
+        td(tr, (r.price / 10000).toFixed(2) + '억');
+        td(tr, (r.high / 10000).toFixed(2) + '억 (' + String(r.high_date).slice(0, 7) + ')');
+        td(tr, '-' + r.drop_pct + '%', 'dn');
+        td(tr, r.deal_date);
+        tb.appendChild(tr);
+      });
+      g('sTable').hidden = !rows.length;
+      msg.textContent = rows.length
+        ? rows.length + '건 · 신고가 대비 하락률 큰 순 (거래 이력이 쌓이는 중이면 과거 신고가가 빠져 있을 수 있어요)'
+        : '조건에 맞는 거래가 없습니다. 조건을 완화해 보세요.';
+    } catch (e) {
+      msg.textContent = '검색 실패: ' + e.message;
+    }
+  }
+  g('sGo').addEventListener('click', run);
+})();
+</script>
+
 </body>
 </html>

@@ -24,6 +24,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: 거래 이력 Supabase 적재 (실패해도 페이지는 만든다)
+        continue-on-error: true
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          TRADE_INGEST_TOKEN: ${{ secrets.TRADE_INGEST_TOKEN }}
+        run: python ingest.py
       - name: 실거래가 받아서 페이지 만들기
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
