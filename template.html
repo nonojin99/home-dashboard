@@ -37,28 +37,36 @@ th{color:var(--muted);font-weight:500}
 details{font-size:13px;color:var(--muted)}
 details p{margin:6px 0}
 .up{color:var(--up)}.down{color:var(--down)}
-.gb-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.gb-admin{font:inherit;font-size:12px;border:1px solid var(--line);background:none;color:var(--muted);border-radius:8px;padding:4px 10px;cursor:pointer}
-.gb-admin.on{color:var(--a);border-color:var(--a)}
-.gb-form{display:grid;gap:8px;margin:8px 0}
-.gb-form input,.gb-form textarea{font:inherit;font-size:16px;width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
-.gb-form textarea{min-height:64px;resize:vertical}
-.gb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.gb-colors{display:flex;gap:6px}
-.gb-colors label{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent}
-.gb-colors input{display:none}
-.gb-colors input:checked+label{border-color:var(--fg)}
-.gb-send{font:inherit;font-size:15px;margin-left:auto;padding:8px 18px;border:0;border-radius:10px;background:var(--a);color:#fff;cursor:pointer}
-.gb-send:disabled{opacity:.5}
-.gb-msg{font-size:13px;color:var(--muted);min-height:1.2em}
-.gb-board{position:relative;height:560px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background-color:var(--panel);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:18px 18px}
-.gb-note{position:absolute;width:150px;min-height:96px;padding:10px 12px 8px;border-radius:4px;color:#2b2b2b;box-shadow:0 2px 6px rgba(0,0,0,.18);font-size:13px;line-height:1.45;word-break:break-word;white-space:pre-wrap;user-select:none}
-@media (max-width:480px){.gb-note{width:128px}}
+.gb-layer{position:fixed;inset:0;pointer-events:none;z-index:40}
+.gb-layer.off{display:none}
+.gb-note{position:absolute;pointer-events:auto;width:160px;min-height:100px;padding:12px 12px 8px;border-radius:3px;color:#2b2b2b;box-shadow:0 3px 10px rgba(0,0,0,.22);font-size:13px;line-height:1.45;word-break:break-word;white-space:pre-wrap;user-select:none}
+@media (max-width:480px){.gb-note{width:132px;font-size:12px}}
 .gb-note .who{display:block;font-size:11px;color:#555;margin-top:6px}
 .gb-note.drag{touch-action:none;cursor:grab;outline:1px dashed rgba(0,0,0,.35)}
-.gb-note.moving{cursor:grabbing;box-shadow:0 8px 20px rgba(0,0,0,.3);z-index:5}
+.gb-note.moving{cursor:grabbing;box-shadow:0 10px 24px rgba(0,0,0,.32);z-index:2}
 .gb-del{position:absolute;top:2px;right:4px;border:0;background:none;font-size:16px;line-height:1;color:#555;cursor:pointer;padding:2px 4px}
-.gb-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px}
+.gb-dock{position:fixed;right:14px;bottom:14px;z-index:50;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.gb-dock .row{display:flex;gap:6px}
+.gb-btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:7px 13px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.gb-btn.main{background:var(--a);border-color:var(--a);color:#fff}
+.gb-btn.on{color:var(--a);border-color:var(--a)}
+.gb-toast{font-size:12px;background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:6px 10px;max-width:260px}
+.gb-toast:empty{display:none}
+.gb-compose{position:fixed;z-index:60;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,calc(100vw - 32px));padding:14px;border-radius:4px;box-shadow:0 12px 32px rgba(0,0,0,.35);display:grid;gap:8px;color:#2b2b2b}
+.gb-compose[hidden]{display:none}
+.gb-compose input,.gb-compose textarea{font:inherit;font-size:16px;width:100%;padding:6px 2px;border:0;border-bottom:1px solid rgba(0,0,0,.2);background:transparent;color:#2b2b2b;outline:none}
+.gb-compose textarea{min-height:110px;resize:none}
+.gb-compose .row{display:flex;align-items:center;gap:6px}
+.gb-colors{display:flex;gap:6px}
+.gb-colors label{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid rgba(0,0,0,.15)}
+.gb-colors input{display:none}
+.gb-colors input:checked+label{border-color:#2b2b2b}
+.gb-compose .act{margin-left:auto;display:flex;gap:6px}
+.gb-compose button{font:inherit;font-size:14px;border:0;border-radius:8px;padding:6px 12px;cursor:pointer}
+.gb-send{background:#2b2b2b;color:#fff}
+.gb-send:disabled{opacity:.5}
+.gb-cancel{background:rgba(0,0,0,.08);color:#2b2b2b}
+main{padding-bottom:80px}
 </style>
 </head>
 <body>
@@ -108,21 +116,6 @@ details p{margin:6px 0}
     </table></div>
   </section>
 
-  <section id="guestbook">
-    <div class="gb-head"><h2>방명록</h2><button type="button" class="gb-admin" id="gbAdmin">관리</button></div>
-    <div class="muted">누구나 남길 수 있어요. 메모 위치는 관리자가 정리합니다.</div>
-    <form class="gb-form" id="gbForm">
-      <input id="gbAuthor" maxlength="20" placeholder="이름" required>
-      <textarea id="gbBody" maxlength="300" placeholder="남길 말 (300자까지)" required></textarea>
-      <div class="gb-row">
-        <div class="gb-colors" id="gbColors"></div>
-        <button class="gb-send" id="gbSend">붙이기</button>
-      </div>
-      <div class="gb-msg" id="gbMsg"></div>
-    </form>
-    <div class="gb-board" id="gbBoard"></div>
-  </section>
-
   <details>
     <summary>지표 정의와 읽을 때 주의할 점</summary>
     <p>84㎡는 전용면적 83㎡ 이상 86㎡ 미만 거래입니다. 해제된 계약은 뺐습니다.</p>
@@ -132,6 +125,23 @@ details p{margin:6px 0}
     <p>전세는 월세가 0원인 계약만 셌습니다. 기준금리와 매물 수는 이 자료에 없습니다.</p>
   </details>
 </main>
+<div class="gb-layer" id="gbLayer" aria-label="메모"></div>
+<form class="gb-compose" id="gbForm" hidden>
+  <input id="gbAuthor" maxlength="20" placeholder="이름" required>
+  <textarea id="gbBody" maxlength="300" placeholder="남길 말 (300자까지)" required></textarea>
+  <div class="row">
+    <div class="gb-colors" id="gbColors"></div>
+    <div class="act"><button type="button" class="gb-cancel" id="gbCancel">취소</button><button class="gb-send" id="gbSend">붙이기</button></div>
+  </div>
+</form>
+<div class="gb-dock">
+  <div class="gb-toast" id="gbMsg" role="status"></div>
+  <div class="row">
+    <button type="button" class="gb-btn" id="gbAdmin">관리</button>
+    <button type="button" class="gb-btn" id="gbToggle">메모 숨기기</button>
+    <button type="button" class="gb-btn main" id="gbNew">＋ 메모</button>
+  </div>
+</div>
 <script>
 const DATA = /*__DATA__*/null;
 const $ = (id) => document.getElementById(id);
@@ -259,12 +269,12 @@ render(sel.value);
 let rw = window.innerWidth;
 window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); drawNotes(); } });
 
-// ---- 방명록 (Supabase) ----
+// ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
 const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
 const NOTE_COLORS = ['#fff3a3', '#ffd1dc', '#c8f0d0', '#cfe3ff', '#ffe0b8'];
-const gb = {notes: [], pin: null};
-try { gb.pin = localStorage.getItem('gbPin'); } catch (e) {}
+const gb = {notes: [], pin: null, hidden: false};
+try { gb.pin = localStorage.getItem('gbPin'); gb.hidden = localStorage.getItem('gbHidden') === '1'; } catch (e) {}
 
 async function sb(path, body) {
   const res = await fetch(SB_URL + '/rest/v1/' + path, {
@@ -277,26 +287,29 @@ async function sb(path, body) {
   return data;
 }
 
+let toastTimer = null;
+function toast(text) {
+  $('gbMsg').textContent = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $('gbMsg').textContent = ''; }, 4000);
+}
+
 const pinMsg = {bad_pin: '비밀번호가 틀렸습니다', locked: '너무 많이 틀려 10분간 잠겼습니다', unset: '관리자 비밀번호가 아직 없습니다'};
 function adminFail(s) {
   if (s === 'bad_pin' || s === 'unset') { gb.pin = null; try { localStorage.removeItem('gbPin'); } catch (e) {} }
-  $('gbMsg').textContent = pinMsg[s] || ('실패: ' + s);
+  toast(pinMsg[s] || ('실패: ' + s));
   drawNotes();
 }
 
 function drawNotes() {
-  const board = $('gbBoard');
-  board.replaceChildren();
+  const layer = $('gbLayer');
+  layer.replaceChildren();
+  layer.classList.toggle('off', gb.hidden);
+  $('gbToggle').textContent = gb.hidden ? '메모 보이기 (' + gb.notes.length + ')' : '메모 숨기기';
   $('gbAdmin').classList.toggle('on', !!gb.pin);
-  $('gbAdmin').textContent = gb.pin ? '관리 중 (끄기)' : '관리';
-  if (!gb.notes.length) {
-    const e = document.createElement('div');
-    e.className = 'gb-empty';
-    e.textContent = '첫 메모를 남겨 보세요';
-    board.appendChild(e);
-    return;
-  }
-  const W = board.clientWidth, H = board.clientHeight;
+  $('gbAdmin').textContent = gb.pin ? '관리 중' : '관리';
+  if (gb.hidden) return;
+  const W = window.innerWidth, H = window.innerHeight;
   gb.notes.forEach((n) => {
     const d = document.createElement('div');
     d.className = 'gb-note' + (gb.pin ? ' drag' : '');
@@ -306,7 +319,7 @@ function drawNotes() {
     who.className = 'who';
     who.textContent = '— ' + n.author + ' · ' + n.created_at.slice(5, 10).replace('-', '/');
     d.appendChild(who);
-    board.appendChild(d);
+    layer.appendChild(d);
     const place = (x, y) => {
       d.style.left = x * Math.max(0, W - d.offsetWidth) + 'px';
       d.style.top = y * Math.max(0, H - d.offsetHeight) + 'px';
@@ -326,7 +339,7 @@ function drawNotes() {
         if (s !== 'ok') return adminFail(s);
         gb.notes = gb.notes.filter((m) => m.id !== n.id);
         drawNotes();
-      } catch (e) { $('gbMsg').textContent = e.message; }
+      } catch (e) { toast(e.message); }
     });
     d.appendChild(del);
     d.addEventListener('pointerdown', (ev) => {
@@ -352,7 +365,7 @@ function drawNotes() {
         try {
           const s = await sb('rpc/guestbook_move', {p_pin: gb.pin, p_id: n.id, p_x: nx, p_y: ny});
           if (s !== 'ok') { n.x = px; n.y = py; return adminFail(s); }
-        } catch (e) { n.x = px; n.y = py; place(px, py); $('gbMsg').textContent = e.message; }
+        } catch (e) { n.x = px; n.y = py; place(px, py); toast(e.message); }
       };
       d.addEventListener('pointermove', move);
       d.addEventListener('pointerup', up);
@@ -366,18 +379,26 @@ async function loadNotes() {
     gb.notes = await sb('guestbook_notes?select=id,author,body,color,x,y,created_at&order=created_at.asc&limit=300');
     drawNotes();
   } catch (e) {
-    $('gbMsg').textContent = '방명록을 불러오지 못했습니다';
+    toast('메모를 불러오지 못했습니다');
   }
 }
 
 NOTE_COLORS.forEach((c, i) => {
   const r = document.createElement('input');
   r.type = 'radio'; r.name = 'gbColor'; r.value = i; r.id = 'gbc' + i; r.checked = i === 0;
+  r.addEventListener('change', () => { $('gbForm').style.background = c; });
   const l = document.createElement('label');
   l.htmlFor = r.id; l.style.background = c; l.title = '색 ' + (i + 1);
   $('gbColors').append(r, l);
 });
+$('gbForm').style.background = NOTE_COLORS[0];
 try { $('gbAuthor').value = localStorage.getItem('gbAuthor') || ''; } catch (e) {}
+
+$('gbNew').addEventListener('click', () => {
+  $('gbForm').hidden = false;
+  ($('gbAuthor').value ? $('gbBody') : $('gbAuthor')).focus();
+});
+$('gbCancel').addEventListener('click', () => { $('gbForm').hidden = true; });
 
 $('gbForm').addEventListener('submit', async (ev) => {
   ev.preventDefault();
@@ -389,20 +410,29 @@ $('gbForm').addEventListener('submit', async (ev) => {
     await sb('rpc/guestbook_post', {p_author: author, p_body: body, p_color: color});
     try { localStorage.setItem('gbAuthor', author); } catch (e) {}
     $('gbBody').value = '';
-    $('gbMsg').textContent = '붙였습니다';
+    $('gbForm').hidden = true;
+    gb.hidden = false;
+    try { localStorage.setItem('gbHidden', '0'); } catch (e) {}
+    toast('붙였습니다');
     await loadNotes();
   } catch (e) {
-    $('gbMsg').textContent = e.message;
+    toast(e.message);
   } finally {
     $('gbSend').disabled = false;
   }
+});
+
+$('gbToggle').addEventListener('click', () => {
+  gb.hidden = !gb.hidden;
+  try { localStorage.setItem('gbHidden', gb.hidden ? '1' : '0'); } catch (e) {}
+  drawNotes();
 });
 
 $('gbAdmin').addEventListener('click', async () => {
   if (gb.pin) {
     gb.pin = null;
     try { localStorage.removeItem('gbPin'); } catch (e) {}
-    $('gbMsg').textContent = '관리 모드를 껐습니다';
+    toast('관리 모드를 껐습니다');
     return drawNotes();
   }
   const pin = prompt('관리자 비밀번호');
@@ -411,19 +441,18 @@ $('gbAdmin').addEventListener('click', async () => {
     let s = await sb('rpc/guestbook_login', {p_pin: pin});
     if (s === 'unset' && confirm('아직 관리자 비밀번호가 없습니다. 방금 입력한 것으로 정할까요? (8자 이상)')) {
       s = await sb('rpc/guestbook_claim', {p_pin: pin});
-      if (s === 'too_short') { $('gbMsg').textContent = '8자 이상으로 정해 주세요'; return; }
+      if (s === 'too_short') return toast('8자 이상으로 정해 주세요');
       if (s === 'taken') s = await sb('rpc/guestbook_login', {p_pin: pin});
     }
     if (s !== 'ok') return adminFail(s);
     gb.pin = pin;
     try { localStorage.setItem('gbPin', pin); } catch (e) {}
-    $('gbMsg').textContent = '관리 모드: 메모를 끌어 옮기거나 × 로 지울 수 있습니다';
+    toast('관리 모드: 메모를 끌어 옮기거나 × 로 지울 수 있습니다');
     drawNotes();
-  } catch (e) { $('gbMsg').textContent = e.message; }
+  } catch (e) { toast(e.message); }
 });
 
 loadNotes();
-
 </script>
 </body>
 </html>
