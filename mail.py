@@ -158,9 +158,11 @@ def main():
     m.attach(MIMEText(body, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
         s.login(user, pw)
-        s.sendmail(user, rcpt, m.as_string())
-    print(f"메일 발송: {len(rcpt)}명")
-    return 0
+        refused = s.sendmail(user, rcpt, m.as_string())
+    for addr, err in (refused or {}).items():
+        print(f"수신 거부됨: {addr[:3]}*** -> {err}", file=sys.stderr)
+    print(f"메일 발송 요청: {len(rcpt)}명 중 서버 거부 {len(refused or {})}명")
+    return 1 if refused else 0
 
 
 if __name__ == "__main__":
