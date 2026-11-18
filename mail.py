@@ -8,103 +8,28 @@ import os
 import smtplib
 import ssl
 import sys
-import urllib.request
 from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
 KST = timezone(timedelta(hours=9))
-SB_URL = "https://fpjgjwazqpfiffnsgume.supabase.co"
-SB_KEY = open(Path(__file__).with_name("ingest.py")).read().split('SB_KEY = "')[1].split('"')[0]
 SITE = "https://nonojin99.github.io/home-dashboard/"
-
-
-def pct(a, b):
-    return None if a is None or not b else round((a - b) / b * 100, 1)
 
 
 def fmt(v, suffix="%"):
     return "—" if v is None else f"{v:+.1f}{suffix}"
 
 
-def signal(price3m, trades_vs_avg):
-    if price3m is None or trades_vs_avg is None:
-        return "자료 부족"
-    p = 1 if price3m > 1 else -1 if price3m < -1 else 0
-    t = 1 if trades_vs_avg > 10 else -1 if trades_vs_avg < -10 else 0
-    if p < 0 and t < 0:
-        return "하락 압력"
-    if p > 0 and t > 0:
-        return "과열 신호"
-    if p > 0 and t <= 0:
-        return "상승 피로"
-    if p < 0 and t > 0:
-        return "저가 매수세"
-    return "중립"
-
-
-def area_rows(data):
-    rows = []
-    for a in data["areas"]:
-        m = a["months"]  # 0=이번 달(부분), 1=지난달, 2.. 이전
-        if len(m) < 5:
-            continue
-        last, prev, three = m[1], m[2], m[4]
-        avg = sum(x["trades"] for x in m[2:]) / len(m[2:])
-        rows.append(
-            {
-                "name": a["name"], "group": a["group"],
-                "sale": last["sale"], "mom": pct(last["sale"], prev["sale"]), "m3": pct(last["sale"], three["sale"]),
-                "trades": last["trades"], "tvs": pct(last["trades"], avg), "ratio": last["ratio"],
-                "signal": signal(pct(last["sale"], three["sale"]), pct(last["trades"], avg)),
-            }
-        )
-    return rows
-
-
-def rate_line(rates):
-    if not rates:
-        return "금리 자료 없음"
-    out = []
-    for key, label in (("base", "기준금리"), ("mortgage", "주담대 금리")):
-        s = rates.get(key) or []
-        if len(s) >= 2:
-            out.append(f"{label} {s[-1][1]:.2f}% ({s[-1][0]}, 전월 대비 {s[-1][1] - s[-2][1]:+.2f}%p)")
-    return " · ".join(out) or "금리 자료 없음"
-
-
-def sb_get(path, body=None):
-    req = urllib.request.Request(
-        f"{SB_URL}/rest/v1/{path}", data=json.dumps(body).encode() if body else None,
-        headers={"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}", "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)
-
-
-def drops(data):
-    """내 조건(84㎡·8~9억·2015년 이후)에서 최근 거래가가 신고가 대비 낮은 단지."""
-    try:
-        codes = sorted({c for a in data["areas"] for c in a["codes"]})
-        rows = sb_get("rpc/search_trades", {"p_sgg": codes, "p_min": 80000, "p_max": 90000, "p_build_min": 2015,
-                                            "p_months": 3, "p_min_drop": 5, "p_limit": 12})
-        first = sb_get("apt_ingest_log?select=ym&order=ym.asc&limit=1")
-        return rows, (first[0]["ym"] if first else None)
-    except Exception as e:
-        print("신고가 비교 조회 실패:", e, file=sys.stderr)
-        return [], None
-
-
 def build_mail(data, now):
-    rows = area_rows(data)
-    drop_rows, since = drops(data)
+    sm = data["summary"]
+    rows, drop_rows, since = sm["rows"], sm["drops"], sm["since"]
     th = "padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;white-space:nowrap;"
     td = th + "font-variant-numeric:tabular-nums;"
     sig_color = {"하락 압력": "#1a7f37", "저가 매수세": "#1a7f37", "과열 신호": "#d1242f", "상승 피로": "#d97706"}
     h = [f"<div style='font:14px/1.6 -apple-system,\"Apple SD Gothic Neo\",sans-serif;color:#1d1d1f'>",
          f"<h2 style='margin:0 0 4px'>경기 남부 84㎡ 주간 요약</h2><div style='color:#6e6e73'>{now:%Y-%m-%d} · 지난달 확정 수치 기준</div>",
-         f"<p>{html.escape(rate_line(data.get('rates')))}</p>",
+         f"<p>{html.escape(sm['rateLine'])}</p>",
          "<table style='border-collapse:collapse;font-size:13px'><tr>" + "".join(
              f"<th style='{th}text-align:left;color:#6e6e73'>{c}</th>" if i == 0 else f"<th style='{th}color:#6e6e73'>{c}</th>"
              for i, c in enumerate(["지역", "중위가", "전월", "3개월", "거래량", "평균 대비", "전세가율", "신호"]))
@@ -134,7 +59,7 @@ def build_mail(data, now):
     else:
         h.append("<p style='color:#6e6e73'>조건에 맞는 단지가 없거나 조회에 실패했습니다.</p>")
     h.append(f"<p><a href='{SITE}'>대시보드 열기</a></p></div>")
-    text = f"경기 남부 84㎡ 주간 요약 ({now:%Y-%m-%d})\n{rate_line(data.get('rates'))}\n" + "\n".join(
+    text = f"경기 남부 84㎡ 주간 요약 ({now:%Y-%m-%d})\n{sm['rateLine']}\n" + "\n".join(
         f"{r['name']}: {r['sale']}억 전월 {fmt(r['mom'])} 3개월 {fmt(r['m3'])} 거래 {r['trades']} → {r['signal']}" for r in rows) + f"\n{SITE}"
     return "".join(h), text
 

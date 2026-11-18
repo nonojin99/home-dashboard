@@ -16,6 +16,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import summary
+
 TRADE_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 RENT_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"
 ECOS_URL = "https://ecos.bok.or.kr/api/StatisticSearch/{key}/json/kr/1/200/{stat}/M/{start}/{end}/{item}"
@@ -308,6 +310,8 @@ def main() -> int:
         return 1
     here = Path(__file__).parent
     data = build(key, datetime.now(KST))
+    now = datetime.now(KST)
+    data["summary"] = summary.make(data, now)
     render(data, here / "template.html", here / "site" / "index.html")
     (here / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")  # 메일 요약용 (배포 안 함)
     print("site/index.html 생성 완료")

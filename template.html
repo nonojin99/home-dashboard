@@ -84,6 +84,15 @@ main{padding-bottom:80px}
 td.dn{color:var(--down);font-weight:600}
 #searchSec .tw{overflow-x:auto}
 .sf label:first-child{grid-column:1/-1}
+.tabs{display:flex;gap:6px}
+.tab{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer}
+.tab.on{background:var(--a);border-color:var(--a);color:#fff}
+#tabDash,#tabSum{display:flex;flex-direction:column;gap:22px}
+#tabDash[hidden],#tabSum[hidden]{display:none}
+.note{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:10px 14px;font-size:13px}
+#tabSum .tw{overflow-x:auto}
+td.sg{font-weight:600}
+td.sg.good{color:var(--down)}td.sg.bad{color:var(--up)}td.sg.warn{color:var(--b)}
 </style>
 </head>
 <body>
@@ -93,6 +102,8 @@ td.dn{color:var(--down);font-weight:600}
     <div class="muted">국토교통부 실거래 신고 기준 · 최근 6개월 · <span id="updated"></span> 갱신</div>
   </header>
 
+  <nav class="tabs"><button class="tab on" data-tab="Dash">대시보드</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
+<div id="tabDash">
   <select id="area" aria-label="지역"></select>
 
   <p class="lede" id="lede"></p>
@@ -174,6 +185,27 @@ td.dn{color:var(--down);font-weight:600}
     <p>동탄 세부 권역은 법정동으로 묶었습니다. 방교동·금곡동·중동은 동탄 전체에서만 집계됩니다.</p>
     <p>전세는 월세가 0원인 계약만 셌습니다. 기준금리와 매물 수는 이 자료에 없습니다.</p>
   </details>
+</div>
+<div id="tabSum" hidden>
+  <div class="note" id="sumNote"></div>
+  <section>
+    <h2>지역별 신호 <span class="muted" id="sumAsof"></span></h2>
+    <p class="muted" id="sumRate"></p>
+    <div class="tw"><table id="sumTable">
+      <thead><tr><th style="text-align:left">지역</th><th>중위가</th><th>전월</th><th>3개월</th><th>거래량</th><th>평균 대비</th><th>전세가율</th><th>신호</th></tr></thead>
+      <tbody id="sumRows"></tbody>
+    </table></div>
+    <p class="muted">신호는 중위가 3개월 변화(±1%)와 지난달 거래량의 직전 평균 대비(±10%)를 조합한 단순 규칙입니다. 중위가는 단지 구성에 따라 출렁이니 방향만 참고하세요. 지표는 매일 갱신되고, 같은 내용이 매주 월요일 아침 메일로도 갑니다.</p>
+  </section>
+  <section>
+    <h2>신고가 대비 낮게 거래된 단지 <span class="muted">(84㎡ · 8~9억 · 2015년 이후)</span></h2>
+    <div class="tw"><table id="dropTable" hidden>
+      <thead><tr><th style="text-align:left">단지</th><th>동</th><th>최근 거래가</th><th>신고가</th><th>신고가 대비</th><th>거래일</th></tr></thead>
+      <tbody id="dropRows"></tbody>
+    </table></div>
+    <p class="muted" id="dropMsg"></p>
+  </section>
+</div>
 </main>
 <div class="gb-layer" id="gbLayer" aria-label="메모"></div>
 <form class="gb-compose" id="gbForm" hidden>
@@ -732,6 +764,49 @@ loadNotes();
     }
   }
   g('sGo').addEventListener('click', run);
+})();
+</script>
+<script>
+(function () {
+  const g = (id) => document.getElementById(id);
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b));
+    g('tabDash').hidden = b.dataset.tab !== 'Dash';
+    g('tabSum').hidden = b.dataset.tab !== 'Sum';
+    if (b.dataset.tab === 'Dash') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
+  }));
+  const S = DATA.summary;
+  if (!S) { document.querySelector('[data-tab="Sum"]').hidden = true; return; }
+  const td = (tr, text, cls) => { const c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); return c; };
+  const sgn = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+  const SG = {'하락 압력': 'good', '저가 매수세': 'good', '과열 신호': 'bad', '상승 피로': 'warn'};
+  g('sumAsof').textContent = '· ' + DATA.updated.slice(0, 10) + ' 기준, 지난달 확정 수치';
+  g('sumRate').textContent = S.rateLine;
+  const tb = g('sumRows');
+  S.rows.forEach((r) => {
+    const tr = document.createElement('tr');
+    td(tr, r.name).style.textAlign = 'left';
+    td(tr, r.sale == null ? '—' : r.sale.toFixed(2) + '억'); td(tr, sgn(r.mom)); td(tr, sgn(r.m3));
+    td(tr, r.trades); td(tr, sgn(r.tvs)); td(tr, r.ratio == null ? '—' : r.ratio.toFixed(1) + '%');
+    td(tr, r.signal, 'sg ' + (SG[r.signal] || ''));
+    tb.appendChild(tr);
+  });
+  const db = g('dropRows');
+  S.drops.forEach((r) => {
+    const tr = document.createElement('tr');
+    td(tr, r.apt).style.textAlign = 'left'; td(tr, r.dong);
+    td(tr, (r.price / 10000).toFixed(2) + '억'); td(tr, (r.high / 10000).toFixed(2) + '억 (' + String(r.high_date).slice(0, 7) + ')');
+    td(tr, '-' + r.drop_pct + '%', 'sg good'); td(tr, r.deal_date);
+    db.appendChild(tr);
+  });
+  g('dropTable').hidden = !S.drops.length;
+  g('dropMsg').textContent = S.drops.length ? '단지마다 가장 최근 거래 1건을 그 단지 신고가와 비교한 결과입니다.' : '조건에 맞는 단지가 없거나 조회하지 못했습니다.';
+  if (S.progress != null && S.progress < 100) {
+    const eta = new Date(Date.now() + (S.etaDays || 0) * 86400000);
+    g('sumNote').textContent = '거래 이력 적재 중 (' + S.progress + '%, ' + (S.since ? S.since.slice(0, 4) + '-' + S.since.slice(4) : '') +
+      '부터 확보). 신고가는 확보된 기간의 최고가라서 지금은 실제보다 낮게 잡혀 있고, 약 ' + (S.etaDays || '?') + '일 뒤(' +
+      (eta.getMonth() + 1) + '월 ' + eta.getDate() + '일경) 2019년까지 적재가 끝나면 신고가 대비 수치가 정확해집니다.';
+  } else { g('sumNote').hidden = true; }
 })();
 </script>
 

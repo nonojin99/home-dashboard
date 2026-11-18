@@ -16,7 +16,7 @@ SB_URL = "https://fpjgjwazqpfiffnsgume.supabase.co"
 SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc"  # 공개용 anon 키 (사이트에도 들어 있음)
 START_YM = "201901"
 REFRESH_MONTHS = 3
-BACKFILL_PER_RUN = int(os.environ.get("BACKFILL_PER_RUN", "24"))
+BACKFILL_PER_RUN = int(os.environ.get("BACKFILL_PER_RUN", "90"))
 
 
 def rpc(name, body):
