@@ -37,6 +37,28 @@ th{color:var(--muted);font-weight:500}
 details{font-size:13px;color:var(--muted)}
 details p{margin:6px 0}
 .up{color:var(--up)}.down{color:var(--down)}
+.gb-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gb-admin{font:inherit;font-size:12px;border:1px solid var(--line);background:none;color:var(--muted);border-radius:8px;padding:4px 10px;cursor:pointer}
+.gb-admin.on{color:var(--a);border-color:var(--a)}
+.gb-form{display:grid;gap:8px;margin:8px 0}
+.gb-form input,.gb-form textarea{font:inherit;font-size:16px;width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
+.gb-form textarea{min-height:64px;resize:vertical}
+.gb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gb-colors{display:flex;gap:6px}
+.gb-colors label{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.gb-colors input{display:none}
+.gb-colors input:checked+label{border-color:var(--fg)}
+.gb-send{font:inherit;font-size:15px;margin-left:auto;padding:8px 18px;border:0;border-radius:10px;background:var(--a);color:#fff;cursor:pointer}
+.gb-send:disabled{opacity:.5}
+.gb-msg{font-size:13px;color:var(--muted);min-height:1.2em}
+.gb-board{position:relative;height:560px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background-color:var(--panel);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:18px 18px}
+.gb-note{position:absolute;width:150px;min-height:96px;padding:10px 12px 8px;border-radius:4px;color:#2b2b2b;box-shadow:0 2px 6px rgba(0,0,0,.18);font-size:13px;line-height:1.45;word-break:break-word;white-space:pre-wrap;user-select:none}
+@media (max-width:480px){.gb-note{width:128px}}
+.gb-note .who{display:block;font-size:11px;color:#555;margin-top:6px}
+.gb-note.drag{touch-action:none;cursor:grab;outline:1px dashed rgba(0,0,0,.35)}
+.gb-note.moving{cursor:grabbing;box-shadow:0 8px 20px rgba(0,0,0,.3);z-index:5}
+.gb-del{position:absolute;top:2px;right:4px;border:0;background:none;font-size:16px;line-height:1;color:#555;cursor:pointer;padding:2px 4px}
+.gb-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -84,6 +106,21 @@ details p{margin:6px 0}
       <thead><tr><th class="l">계약일</th><th class="l">단지</th><th class="l">동</th><th>층</th><th>준공</th><th>가격</th></tr></thead>
       <tbody id="recentRows"></tbody>
     </table></div>
+  </section>
+
+  <section id="guestbook">
+    <div class="gb-head"><h2>방명록</h2><button type="button" class="gb-admin" id="gbAdmin">관리</button></div>
+    <div class="muted">누구나 남길 수 있어요. 메모 위치는 관리자가 정리합니다.</div>
+    <form class="gb-form" id="gbForm">
+      <input id="gbAuthor" maxlength="20" placeholder="이름" required>
+      <textarea id="gbBody" maxlength="300" placeholder="남길 말 (300자까지)" required></textarea>
+      <div class="gb-row">
+        <div class="gb-colors" id="gbColors"></div>
+        <button class="gb-send" id="gbSend">붙이기</button>
+      </div>
+      <div class="gb-msg" id="gbMsg"></div>
+    </form>
+    <div class="gb-board" id="gbBoard"></div>
   </section>
 
   <details>
@@ -220,7 +257,173 @@ sel.addEventListener('change', () => {
 $('updated').textContent = DATA.updated;
 render(sel.value);
 let rw = window.innerWidth;
-window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); } });
+window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); drawNotes(); } });
+
+// ---- 방명록 (Supabase) ----
+const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
+const NOTE_COLORS = ['#fff3a3', '#ffd1dc', '#c8f0d0', '#cfe3ff', '#ffe0b8'];
+const gb = {notes: [], pin: null};
+try { gb.pin = localStorage.getItem('gbPin'); } catch (e) {}
+
+async function sb(path, body) {
+  const res = await fetch(SB_URL + '/rest/v1/' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data && data.message) || '요청 실패 (' + res.status + ')');
+  return data;
+}
+
+const pinMsg = {bad_pin: '비밀번호가 틀렸습니다', locked: '너무 많이 틀려 10분간 잠겼습니다', unset: '관리자 비밀번호가 아직 없습니다'};
+function adminFail(s) {
+  if (s === 'bad_pin' || s === 'unset') { gb.pin = null; try { localStorage.removeItem('gbPin'); } catch (e) {} }
+  $('gbMsg').textContent = pinMsg[s] || ('실패: ' + s);
+  drawNotes();
+}
+
+function drawNotes() {
+  const board = $('gbBoard');
+  board.replaceChildren();
+  $('gbAdmin').classList.toggle('on', !!gb.pin);
+  $('gbAdmin').textContent = gb.pin ? '관리 중 (끄기)' : '관리';
+  if (!gb.notes.length) {
+    const e = document.createElement('div');
+    e.className = 'gb-empty';
+    e.textContent = '첫 메모를 남겨 보세요';
+    board.appendChild(e);
+    return;
+  }
+  const W = board.clientWidth, H = board.clientHeight;
+  gb.notes.forEach((n) => {
+    const d = document.createElement('div');
+    d.className = 'gb-note' + (gb.pin ? ' drag' : '');
+    d.style.background = NOTE_COLORS[n.color] || NOTE_COLORS[0];
+    d.textContent = n.body;
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = '— ' + n.author + ' · ' + n.created_at.slice(5, 10).replace('-', '/');
+    d.appendChild(who);
+    board.appendChild(d);
+    const place = (x, y) => {
+      d.style.left = x * Math.max(0, W - d.offsetWidth) + 'px';
+      d.style.top = y * Math.max(0, H - d.offsetHeight) + 'px';
+    };
+    place(n.x, n.y);
+    if (!gb.pin) return;
+    const del = document.createElement('button');
+    del.className = 'gb-del';
+    del.type = 'button';
+    del.textContent = '×';
+    del.setAttribute('aria-label', '삭제');
+    del.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    del.addEventListener('click', async () => {
+      if (!confirm('이 메모를 지울까요?')) return;
+      try {
+        const s = await sb('rpc/guestbook_delete', {p_pin: gb.pin, p_id: n.id});
+        if (s !== 'ok') return adminFail(s);
+        gb.notes = gb.notes.filter((m) => m.id !== n.id);
+        drawNotes();
+      } catch (e) { $('gbMsg').textContent = e.message; }
+    });
+    d.appendChild(del);
+    d.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      d.setPointerCapture(ev.pointerId);
+      d.classList.add('moving');
+      const sx = ev.clientX, sy = ev.clientY, ox = d.offsetLeft, oy = d.offsetTop;
+      const maxX = Math.max(1, W - d.offsetWidth), maxY = Math.max(1, H - d.offsetHeight);
+      let nx = n.x, ny = n.y;
+      const move = (e) => {
+        nx = Math.min(1, Math.max(0, (ox + e.clientX - sx) / maxX));
+        ny = Math.min(1, Math.max(0, (oy + e.clientY - sy) / maxY));
+        place(nx, ny);
+      };
+      const up = async () => {
+        d.removeEventListener('pointermove', move);
+        d.removeEventListener('pointerup', up);
+        d.removeEventListener('pointercancel', up);
+        d.classList.remove('moving');
+        if (nx === n.x && ny === n.y) return;
+        const px = n.x, py = n.y;
+        n.x = nx; n.y = ny;
+        try {
+          const s = await sb('rpc/guestbook_move', {p_pin: gb.pin, p_id: n.id, p_x: nx, p_y: ny});
+          if (s !== 'ok') { n.x = px; n.y = py; return adminFail(s); }
+        } catch (e) { n.x = px; n.y = py; place(px, py); $('gbMsg').textContent = e.message; }
+      };
+      d.addEventListener('pointermove', move);
+      d.addEventListener('pointerup', up);
+      d.addEventListener('pointercancel', up);
+    });
+  });
+}
+
+async function loadNotes() {
+  try {
+    gb.notes = await sb('guestbook_notes?select=id,author,body,color,x,y,created_at&order=created_at.asc&limit=300');
+    drawNotes();
+  } catch (e) {
+    $('gbMsg').textContent = '방명록을 불러오지 못했습니다';
+  }
+}
+
+NOTE_COLORS.forEach((c, i) => {
+  const r = document.createElement('input');
+  r.type = 'radio'; r.name = 'gbColor'; r.value = i; r.id = 'gbc' + i; r.checked = i === 0;
+  const l = document.createElement('label');
+  l.htmlFor = r.id; l.style.background = c; l.title = '색 ' + (i + 1);
+  $('gbColors').append(r, l);
+});
+try { $('gbAuthor').value = localStorage.getItem('gbAuthor') || ''; } catch (e) {}
+
+$('gbForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const author = $('gbAuthor').value.trim(), body = $('gbBody').value.trim();
+  if (!author || !body) return;
+  const color = Number(document.querySelector('input[name=gbColor]:checked').value);
+  $('gbSend').disabled = true;
+  try {
+    await sb('rpc/guestbook_post', {p_author: author, p_body: body, p_color: color});
+    try { localStorage.setItem('gbAuthor', author); } catch (e) {}
+    $('gbBody').value = '';
+    $('gbMsg').textContent = '붙였습니다';
+    await loadNotes();
+  } catch (e) {
+    $('gbMsg').textContent = e.message;
+  } finally {
+    $('gbSend').disabled = false;
+  }
+});
+
+$('gbAdmin').addEventListener('click', async () => {
+  if (gb.pin) {
+    gb.pin = null;
+    try { localStorage.removeItem('gbPin'); } catch (e) {}
+    $('gbMsg').textContent = '관리 모드를 껐습니다';
+    return drawNotes();
+  }
+  const pin = prompt('관리자 비밀번호');
+  if (!pin) return;
+  try {
+    let s = await sb('rpc/guestbook_login', {p_pin: pin});
+    if (s === 'unset' && confirm('아직 관리자 비밀번호가 없습니다. 방금 입력한 것으로 정할까요? (8자 이상)')) {
+      s = await sb('rpc/guestbook_claim', {p_pin: pin});
+      if (s === 'too_short') { $('gbMsg').textContent = '8자 이상으로 정해 주세요'; return; }
+      if (s === 'taken') s = await sb('rpc/guestbook_login', {p_pin: pin});
+    }
+    if (s !== 'ok') return adminFail(s);
+    gb.pin = pin;
+    try { localStorage.setItem('gbPin', pin); } catch (e) {}
+    $('gbMsg').textContent = '관리 모드: 메모를 끌어 옮기거나 × 로 지울 수 있습니다';
+    drawNotes();
+  } catch (e) { $('gbMsg').textContent = e.message; }
+});
+
+loadNotes();
+
 </script>
 </body>
 </html>
