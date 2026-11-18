@@ -27,6 +27,7 @@ jobs:
       - name: 실거래가 받아서 페이지 만들기
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
         run: python build.py
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -117,6 +117,13 @@ main{padding-bottom:80px}
     <div class="chart" id="priceChart"></div>
   </section>
 
+  <section id="rateSec" hidden>
+    <h2>금리 추이 (월말 기준)</h2>
+    <div class="muted" id="rateNote"></div>
+    <div class="legend"><span><span class="sw" style="background:var(--a)"></span>주택담보대출 금리 (예금은행 신규취급)</span><span><span class="sw" style="background:var(--b)"></span>한국은행 기준금리</span></div>
+    <div class="chart" id="rateChart"></div>
+  </section>
+
   <section>
     <h2>월별 지표</h2>
     <div class="scroll"><table>
@@ -228,6 +235,36 @@ function priceChart(rows) {
   data.forEach((r, i) => label(svg, x(i), h - 6, r.ym.slice(2)));
 }
 
+function rateChart() {
+  const R = DATA.rates;
+  if (!R || !R.base || !R.mortgage) return;
+  $('rateSec').hidden = false;
+  const lastOf = (s) => s[s.length - 1];
+  $('rateNote').textContent = `최근 값: 기준금리 ${lastOf(R.base)[1].toFixed(2)}% (${lastOf(R.base)[0]}) · 주담대 ${lastOf(R.mortgage)[1].toFixed(2)}% (${lastOf(R.mortgage)[0]}). 한국은행 ECOS, 매월 발표 후 반영됩니다.`;
+  const box = $('rateChart');
+  box.replaceChildren();
+  const months = [...new Set([...R.base, ...R.mortgage].map((p) => p[0]))].sort();
+  const w = Math.max(300, box.clientWidth), h = 220, top = 20, bottom = 24, left = 16, right = 40;
+  const svg = el('svg', {viewBox: `0 0 ${w} ${h}`, role: 'img', 'aria-label': '기준금리와 주택담보대출 금리 월별 추이'}, box);
+  const vals = [...R.base, ...R.mortgage].map((p) => p[1]);
+  const lo = 0, hi = Math.ceil(Math.max(...vals) + 0.5);
+  const x = (ym) => left + (months.indexOf(ym) / Math.max(1, months.length - 1)) * (w - left - right);
+  const y = (v) => top + ((hi - v) / (hi - lo)) * (h - top - bottom);
+  for (let v = 0; v <= hi; v += 1) {
+    el('line', {x1: left, x2: w - right, y1: y(v), y2: y(v), stroke: 'var(--line)'}, svg);
+    const t = el('text', {x: w - right + 6, y: y(v) + 4}, svg);
+    t.textContent = v + '%';
+  }
+  months.filter((m) => m.endsWith('-01')).forEach((m) => label(svg, x(m), h - 6, m.slice(0, 4)));
+  [['mortgage', 'var(--a)'], ['base', 'var(--b)']].forEach(([k, color]) => {
+    const s = R[k];
+    el('path', {d: s.map((p, i) => (i ? 'L' : 'M') + x(p[0]) + ',' + y(p[1])).join(''), fill: 'none', stroke: color, 'stroke-width': 2}, svg);
+    const [ym, v] = lastOf(s);
+    el('circle', {cx: x(ym), cy: y(v), r: 3.5, fill: color}, svg);
+    label(svg, x(ym) - 14, y(v) - 7, v.toFixed(2), 'val');
+  });
+}
+
 function cell(tr, text, left) {
   const td = document.createElement('td');
   if (left) td.className = 'l';
@@ -284,9 +321,10 @@ sel.addEventListener('change', () => {
   render(sel.value);
 });
 $('updated').textContent = DATA.updated;
+rateChart();
 render(sel.value);
 let rw = window.innerWidth;
-window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); drawNotes(); } });
+window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); rateChart(); drawNotes(); } });
 
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
 const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';

@@ -18,6 +18,14 @@ from pathlib import Path
 
 TRADE_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 RENT_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"
+ECOS_URL = "https://ecos.bok.or.kr/api/StatisticSearch/{key}/json/kr/1/200/{stat}/M/{start}/{end}/{item}"
+
+# 한국은행 ECOS 월별 금리: (키, 통계표, 항목)
+RATE_SERIES = [
+    ("base", "722Y001", "0101000"),  # 한국은행 기준금리
+    ("mortgage", "121Y006", "BECBLA0302"),  # 예금은행 주택담보대출 금리(신규취급액 기준)
+]
+RATE_START = "202101"
 
 MONTHS = 6
 PAGE_SIZE = 1000
@@ -241,6 +249,27 @@ def merge(by_code: dict[str, dict[str, list[dict]]], codes, yms: list[str]) -> d
     return {ym: [r for c in codes for r in by_code[c][ym]] for ym in yms}
 
 
+def fetch_rates(key: str, now: datetime) -> dict | None:
+    """ECOS에서 월별 금리를 받는다. 키가 없거나 실패하면 None (금리 없이 페이지는 만든다)."""
+    if not key:
+        print("ECOS_API_KEY 가 없어 금리는 건너뜁니다")
+        return None
+    out = {}
+    for name, stat, item in RATE_SERIES:
+        url = ECOS_URL.format(key=urllib.parse.quote(key, safe=""), stat=stat, item=item,
+                              start=RATE_START, end=now.strftime("%Y%m"))
+        try:
+            with urllib.request.urlopen(url, timeout=60) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            rows = body["StatisticSearch"]["row"]
+            out[name] = [[f"{r['TIME'][:4]}-{r['TIME'][4:]}", float(r["DATA_VALUE"])] for r in rows]
+            print(f"금리 {name}: {len(rows)}개월, 최근 {out[name][-1]}")
+        except Exception as e:
+            print(f"금리 {name} 실패: {e} / 응답: {str(locals().get('body', ''))[:200]}")
+            return None
+    return out
+
+
 def build(key: str, now: datetime) -> dict:
     yms = months_back(now, MONTHS)
     codes = sorted({c for a in AREAS for c in as_codes(a[2])})
@@ -260,6 +289,7 @@ def build(key: str, now: datetime) -> dict:
             for k, name, code, dongs, group in AREAS
         ],
         "sggNames": SGG_NAMES,
+        "rates": fetch_rates(os.environ.get("ECOS_API_KEY", ""), now),
         "complexes": {code: complexes(trades[code], yms) for code in codes},
     }
 
