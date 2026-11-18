@@ -149,19 +149,19 @@ td.dn{color:var(--down);font-weight:600}
   </section>
 
   <section id="searchSec">
-    <h2>조건 검색 · 신고가 대비 싸게 거래된 84㎡</h2>
+    <h2>조건 검색 · 단지별 최근 거래가 vs 신고가</h2>
     <div class="sf">
       <label>지역<select id="sArea"></select></label>
       <label>가격(억) 이상<input id="sMin" type="number" step="0.1" value="8"></label>
       <label>가격(억) 이하<input id="sMax" type="number" step="0.1" value="9"></label>
       <label>준공 연도 이후<input id="sBuilt" type="number" step="1" value="2015"></label>
-      <label>신고가 대비 하락(%) 이상<input id="sDrop" type="number" step="1" value="10"></label>
-      <label>거래 시점<select id="sMonths"><option value="1">최근 1개월</option><option value="3" selected>최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option></select></label>
+      <label>최근 거래가 신고가 대비 하락(%) 이상<input id="sDrop" type="number" step="1" value="10"></label>
+      <label>최근 거래 시점<select id="sMonths"><option value="1">최근 1개월</option><option value="3" selected>최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option></select></label>
     </div>
     <button id="sGo" class="sbtn">검색</button>
-    <p class="muted" id="sMsg">호가·매물이 아니라 실제 거래된 가격 기준입니다. 신고가는 2019년 이후 같은 단지 84㎡ 최고 거래가입니다.</p>
+    <p class="muted" id="sMsg">단지마다 가장 최근 84㎡ 거래가를 같은 단지 신고가(2019년 이후 최고 거래가)와 비교합니다. 호가·매물이 아닌 실거래 기준입니다.</p>
     <div class="tw"><table id="sTable" hidden>
-      <thead><tr><th>단지</th><th>동</th><th>준공</th><th>층</th><th>거래가</th><th>신고가</th><th>하락</th><th>거래일</th></tr></thead>
+      <thead><tr><th>단지</th><th>동</th><th>준공</th><th>층</th><th>최근 거래가</th><th>신고가</th><th>신고가 대비</th><th>거래일</th></tr></thead>
       <tbody id="sRows"></tbody>
     </table></div>
   </section>
@@ -725,7 +725,7 @@ loadNotes();
       });
       g('sTable').hidden = !rows.length;
       msg.textContent = rows.length
-        ? rows.length + '건 · 신고가 대비 하락률 큰 순 (거래 이력이 쌓이는 중이면 과거 신고가가 빠져 있을 수 있어요)'
+        ? rows.length + '개 단지 · 신고가 대비 하락률 큰 순 (거래 이력이 쌓이는 중이면 과거 신고가가 빠져 있을 수 있어요)'
         : '조건에 맞는 거래가 없습니다. 조건을 완화해 보세요.';
     } catch (e) {
       msg.textContent = '검색 실패: ' + e.message;
