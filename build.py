@@ -26,17 +26,24 @@ RECENT_COUNT = 15
 MAP_MONTHS = 3  # 지도에 올릴 84㎡ 거래 기간(이번 달 포함)
 MAP_TRADES = 5  # 단지별로 보여줄 최근 거래 수
 
-# (지역 키, 이름, 법정동코드 5자리, 포함할 동 목록 또는 None=전체)
+# (지역 키, 이름, 법정동코드 5자리, 포함할 동 목록 또는 None=전체, 선택 목록 묶음)
 AREAS = [
-    ("dt", "화성 동탄구 전체", "41597", None),
-    ("dt1a", "동탄1 시범·솔빛 (반송동)", "41597", ["반송동"]),
-    ("dt1b", "동탄1 능동·석우동", "41597", ["능동", "석우동"]),
-    ("station", "동탄역권 (영천·청계·여울·오산동)", "41597", ["영천동", "청계동", "여울동", "오산동"]),
-    ("lake", "호수공원권 (산척·장지·송동)", "41597", ["산척동", "장지동", "송동"]),
-    ("mok", "목동·신동", "41597", ["목동", "신동"]),
-    ("yt", "수원 영통구 (망포)", "41117", None),
-    ("pd", "수원 팔달구 (수원시청·매교)", "41115", None),
-    ("gs", "수원 권선구 (권선·세류)", "41113", None),
+    ("dt", "화성 동탄구 전체", "41597", None, "화성 동탄"),
+    ("dt1a", "동탄1 시범·솔빛 (반송동)", "41597", ["반송동"], "화성 동탄"),
+    ("dt1b", "동탄1 능동·석우동", "41597", ["능동", "석우동"], "화성 동탄"),
+    ("station", "동탄역권 (영천·청계·여울·오산동)", "41597", ["영천동", "청계동", "여울동", "오산동"], "화성 동탄"),
+    ("lake", "호수공원권 (산척·장지·송동)", "41597", ["산척동", "장지동", "송동"], "화성 동탄"),
+    ("mok", "목동·신동", "41597", ["목동", "신동"], "화성 동탄"),
+    ("yt", "수원 영통구 전체", "41117", None, "수원"),
+    ("ytmp", "영통·망포 (영통·망포·신동)", "41117", ["영통동", "망포동", "신동"], "수원"),
+    ("gg", "광교 (이의동·하동)", "41117", ["이의동", "하동"], "수원"),
+    ("ytmt", "매탄·원천", "41117", ["매탄동", "원천동"], "수원"),
+    ("pd", "수원 팔달구 전체 (수원시청·매교)", "41115", None, "수원"),
+    ("hs", "화서 (화서동)", "41115", ["화서동"], "수원"),
+    ("gs", "수원 권선구 전체 (권선·세류)", "41113", None, "수원"),
+    ("sj", "용인 수지구 전체", "41465", None, "용인 수지"),
+    ("sh", "상현 (상현동)", "41465", ["상현동"], "용인 수지"),
+    ("os", "오산시 전체", "41370", None, "오산"),
 ]
 
 # 지도에서 주소를 좌표로 바꿀 때 앞에 붙일 시·구 이름
@@ -45,6 +52,8 @@ SGG_NAMES = {
     "41117": "경기도 수원시 영통구",
     "41115": "경기도 수원시 팔달구",
     "41113": "경기도 수원시 권선구",
+    "41465": "경기도 용인시 수지구",
+    "41370": "경기도 오산시",
 }
 
 KST = timezone(timedelta(hours=9))
@@ -219,7 +228,7 @@ def complexes(trades: dict[str, list[dict]], yms: list[str]) -> list[dict]:
 
 def build(key: str, now: datetime) -> dict:
     yms = months_back(now, MONTHS)
-    codes = sorted({code for _, _, code, _ in AREAS})
+    codes = sorted({a[2] for a in AREAS})
     trades: dict[str, dict[str, list[dict]]] = {}
     rents: dict[str, dict[str, list[dict]]] = {}
     for code in codes:
@@ -231,9 +240,9 @@ def build(key: str, now: datetime) -> dict:
     return {
         "updated": now.strftime("%Y-%m-%d %H:%M"),
         "areas": [
-            {"key": k, "name": name, "code": code, "dongs": dongs,
+            {"key": k, "name": name, "code": code, "dongs": dongs, "group": group,
              **summarize(trades[code], rents[code], yms, dongs)}
-            for k, name, code, dongs in AREAS
+            for k, name, code, dongs, group in AREAS
         ],
         "sggNames": SGG_NAMES,
         "complexes": {code: complexes(trades[code], yms) for code in codes},

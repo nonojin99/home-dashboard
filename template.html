@@ -269,11 +269,11 @@ function render(key) {
 }
 
 const sel = $('area');
-const groups = [['화성 동탄구', (k) => !['yt', 'pd', 'gs'].includes(k)], ['수원', (k) => ['yt', 'pd', 'gs'].includes(k)]];
-groups.forEach(([name, test]) => {
+[...new Set(DATA.areas.map((a) => a.group))].forEach((name) => {
   const g = document.createElement('optgroup');
   g.label = name;
-  DATA.areas.filter((a) => test(a.key)).forEach((a) => g.appendChild(new Option(a.name, a.key)));
+  DATA.areas.filter((a) => a.group === name)
+    .forEach((a) => g.appendChild(new Option((a.dongs ? '└ ' : '') + a.name, a.key)));
   sel.appendChild(g);
 });
 let saved = null;
@@ -294,7 +294,8 @@ const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#08
 const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null};
 
 // 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
-const ZONES = DATA.areas.filter((a) => a.key !== 'dt');
+// 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
+const ZONES = DATA.areas.filter((a) => a.dongs || !DATA.areas.some((b) => b.code === a.code && b.dongs));
 const zoneOf = (code, dong) => ZONES.find((z) => z.code === code && (!z.dongs || z.dongs.includes(dong)));
 const zoneColor = (z) => (z ? ZONE_COLORS[ZONES.indexOf(z) % ZONE_COLORS.length] : '#6b7280');
 
@@ -357,23 +358,17 @@ function showInfo(c, z) {
 function drawLegend(a) {
   const box = $('mapLegend');
   box.replaceChildren();
-  const zones = a.key === 'dt' ? ZONES.filter((z) => z.code === a.code) : [zoneOf(a.code, (a.dongs || [])[0]) || ZONES.find((z) => z.key === a.key)];
-  zones.filter(Boolean).forEach((z) => {
+  const zones = a.dongs ? [a] : ZONES.filter((z) => z.code === a.code);
+  const add = (color, text) => {
     const s = document.createElement('span');
     const sw = document.createElement('span');
     sw.className = 'sw';
-    sw.style.background = zoneColor(z);
-    s.append(sw, document.createTextNode(z.name));
+    sw.style.background = color;
+    s.append(sw, document.createTextNode(text));
     box.appendChild(s);
-  });
-  if (a.key === 'dt') {
-    const s = document.createElement('span');
-    const sw = document.createElement('span');
-    sw.className = 'sw';
-    sw.style.background = zoneColor(null);
-    s.append(sw, document.createTextNode('그 외 (방교·금곡·중동)'));
-    box.appendChild(s);
-  }
+  };
+  zones.forEach((z) => add(zoneColor(z), z.name));
+  if (!a.dongs && zones.some((z) => z.dongs)) add(zoneColor(null), '그 외 동');
 }
 
 async function updateMap(a) {
