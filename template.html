@@ -289,7 +289,7 @@ let rw = window.innerWidth;
 window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); drawNotes(); } });
 
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
-const KAKAO_JS_KEY = '';
+const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';
 const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
 const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null};
 
