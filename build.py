@@ -23,6 +23,8 @@ MONTHS = 6
 PAGE_SIZE = 1000
 AREA_MIN, AREA_MAX = 83.0, 86.0  # 전용 84㎡ 범위
 RECENT_COUNT = 15
+MAP_MONTHS = 3  # 지도에 올릴 84㎡ 거래 기간(이번 달 포함)
+MAP_TRADES = 5  # 단지별로 보여줄 최근 거래 수
 
 # (지역 키, 이름, 법정동코드 5자리, 포함할 동 목록 또는 None=전체)
 AREAS = [
@@ -36,6 +38,14 @@ AREAS = [
     ("pd", "수원 팔달구 (수원시청·매교)", "41115", None),
     ("gs", "수원 권선구 (권선·세류)", "41113", None),
 ]
+
+# 지도에서 주소를 좌표로 바꿀 때 앞에 붙일 시·구 이름
+SGG_NAMES = {
+    "41597": "경기도 화성시 동탄구",
+    "41117": "경기도 수원시 영통구",
+    "41115": "경기도 수원시 팔달구",
+    "41113": "경기도 수원시 권선구",
+}
 
 KST = timezone(timedelta(hours=9))
 
@@ -113,6 +123,7 @@ def parse_trades(items: list[ET.Element]) -> list[dict]:
                 "price": price,
                 "date": f"{txt(i, 'dealYear')}-{txt(i, 'dealMonth').zfill(2)}-{txt(i, 'dealDay').zfill(2)}",
                 "built": txt(i, "buildYear"),
+                "jibun": txt(i, "jibun"),
             }
         )
     return out
@@ -188,6 +199,24 @@ def summarize(trades: dict[str, list[dict]], rents: dict[str, list[dict]], yms: 
     }
 
 
+def complexes(trades: dict[str, list[dict]], yms: list[str]) -> list[dict]:
+    """최근 MAP_MONTHS개월 84㎡ 거래를 단지별로 묶는다."""
+    groups: dict[tuple, list[dict]] = {}
+    for ym in yms[:MAP_MONTHS]:
+        for r in trades[ym]:
+            if is84(r) and r["jibun"]:
+                groups.setdefault((r["dong"], r["jibun"], r["apt"]), []).append(r)
+    out = []
+    for (dong, jibun, apt), rows in groups.items():
+        rows.sort(key=lambda r: r["date"], reverse=True)
+        out.append({
+            "apt": apt, "dong": dong, "jibun": jibun, "built": rows[0]["built"], "count": len(rows),
+            "trades": [{"date": r["date"], "floor": r["floor"], "price": eok(r["price"])} for r in rows[:MAP_TRADES]],
+        })
+    out.sort(key=lambda c: (c["dong"], c["apt"]))
+    return out
+
+
 def build(key: str, now: datetime) -> dict:
     yms = months_back(now, MONTHS)
     codes = sorted({code for _, _, code, _ in AREAS})
@@ -202,9 +231,12 @@ def build(key: str, now: datetime) -> dict:
     return {
         "updated": now.strftime("%Y-%m-%d %H:%M"),
         "areas": [
-            {"key": k, "name": name, **summarize(trades[code], rents[code], yms, dongs)}
+            {"key": k, "name": name, "code": code, "dongs": dongs,
+             **summarize(trades[code], rents[code], yms, dongs)}
             for k, name, code, dongs in AREAS
         ],
+        "sggNames": SGG_NAMES,
+        "complexes": {code: complexes(trades[code], yms) for code in codes},
     }
 
 

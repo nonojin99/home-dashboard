@@ -37,6 +37,16 @@ th{color:var(--muted);font-weight:500}
 details{font-size:13px;color:var(--muted)}
 details p{margin:6px 0}
 .up{color:var(--up)}.down{color:var(--down)}
+.map-box{position:relative;height:440px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+@media (max-width:480px){.map-box{height:380px}}
+.map-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;text-align:center;padding:16px;pointer-events:none;z-index:5}
+.map-msg[hidden]{display:none}
+.map-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin:4px 0 6px}
+.map-pin{font:600 12px/1 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;color:#fff;padding:5px 7px;border-radius:10px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);white-space:nowrap;cursor:pointer;font-variant-numeric:tabular-nums}
+.map-pin.sel{outline:3px solid #111;outline-offset:1px}
+.map-info{font-size:13px;margin-top:8px}
+.map-info b{font-size:15px}
+.map-info:empty{display:none}
 .gb-layer{position:fixed;inset:0;pointer-events:none;z-index:40}
 .gb-layer.off{display:none}
 .gb-note{position:absolute;pointer-events:auto;width:160px;min-height:100px;padding:12px 12px 8px;border-radius:3px;color:#2b2b2b;box-shadow:0 3px 10px rgba(0,0,0,.22);font-size:13px;line-height:1.45;word-break:break-word;white-space:pre-wrap;user-select:none}
@@ -85,6 +95,14 @@ main{padding-bottom:80px}
     <div class="card"><div class="label">매매 거래량 (전체 면적) · 지난달</div><div class="value" id="cTrades">—</div><div class="sub">전월 대비 <span id="cTradesMom">—</span></div></div>
     <div class="card"><div class="label">84㎡ 전세 중위가 · 지난달</div><div class="value" id="cJeonse">—</div><div class="sub">전월 대비 <span id="cJeonseMom">—</span></div></div>
     <div class="card"><div class="label">84㎡ 전세가율 · 지난달</div><div class="value" id="cRatio">—</div><div class="sub">전세 중위가 ÷ 매매 중위가</div></div>
+  </section>
+
+  <section id="mapSec">
+    <h2>단지 지도 · 최근 3개월 84㎡</h2>
+    <div class="muted">숫자는 단지별 가장 최근 84㎡ 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
+    <div class="map-legend" id="mapLegend"></div>
+    <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
+    <div class="map-info" id="mapInfo"></div>
   </section>
 
   <section>
@@ -242,6 +260,7 @@ function render(key) {
   });
   const rt = $('recentRows');
   rt.replaceChildren();
+  if (window.__updateMap) window.__updateMap(a);
   a.recent.forEach((r) => {
     const tr = document.createElement('tr');
     [[r.date, true], [r.apt, true], [r.dong, true], [r.floor], [r.built], [eok(r.price)]].forEach(([t, l]) => cell(tr, t, l));
@@ -268,6 +287,153 @@ $('updated').textContent = DATA.updated;
 render(sel.value);
 let rw = window.innerWidth;
 window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = window.innerWidth; render(sel.value); drawNotes(); } });
+
+// ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
+const KAKAO_JS_KEY = '';
+const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
+const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null};
+
+// 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
+const ZONES = DATA.areas.filter((a) => a.key !== 'dt');
+const zoneOf = (code, dong) => ZONES.find((z) => z.code === code && (!z.dongs || z.dongs.includes(dong)));
+const zoneColor = (z) => (z ? ZONE_COLORS[ZONES.indexOf(z) % ZONE_COLORS.length] : '#6b7280');
+
+function mapMsg(text) {
+  $('mapMsg').textContent = text;
+  $('mapMsg').hidden = !text;
+}
+
+function loadKakao() {
+  if (!KAKAO_JS_KEY) return Promise.reject(new Error('카카오 지도 키를 넣기 전입니다'));
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&libraries=services&appkey=' + KAKAO_JS_KEY;
+    s.onload = () => window.kakao.maps.load(resolve);
+    s.onerror = () => reject(new Error('카카오 지도를 불러오지 못했습니다'));
+    document.head.appendChild(s);
+  });
+}
+
+// 지번 주소로 먼저 찾고, 없으면 시 이름만으로, 그래도 없으면 단지 이름으로 찾는다
+function geocode(c, code) {
+  const key = code + '|' + c.dong + '|' + c.jibun + '|' + c.apt;
+  if (mapState.geo.has(key)) return mapState.geo.get(key);
+  const sgg = DATA.sggNames[code] || '';
+  const city = sgg.split(' ').slice(0, 2).join(' ');
+  const geocoder = new kakao.maps.services.Geocoder();
+  const places = new kakao.maps.services.Places();
+  const byAddr = (q) => new Promise((res) => geocoder.addressSearch(q, (r, st) => res(st === kakao.maps.services.Status.OK && r.length ? {lat: +r[0].y, lng: +r[0].x} : null)));
+  const byWord = (q) => new Promise((res) => places.keywordSearch(q, (r, st) => res(st === kakao.maps.services.Status.OK && r.length ? {lat: +r[0].y, lng: +r[0].x} : null)));
+  const p = (async () => (await byAddr(`${sgg} ${c.dong} ${c.jibun}`))
+    || (await byAddr(`${city} ${c.dong} ${c.jibun}`))
+    || (await byWord(`${city} ${c.dong} ${c.apt}`)))();
+  mapState.geo.set(key, p);
+  return p;
+}
+
+function showInfo(c, z) {
+  const box = $('mapInfo');
+  box.replaceChildren();
+  const title = document.createElement('b');
+  title.textContent = c.apt;
+  const meta = document.createElement('div');
+  meta.className = 'muted';
+  meta.textContent = `${c.dong} ${c.jibun} · ${c.built}년 준공 · ${z ? z.name : ''} · 최근 3개월 84㎡ ${c.count}건`;
+  const wrap = document.createElement('div');
+  wrap.className = 'scroll';
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th class="l">계약일</th><th>층</th><th>가격</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  c.trades.forEach((t) => {
+    const tr = document.createElement('tr');
+    cell(tr, t.date, true); cell(tr, t.floor); cell(tr, eok(t.price));
+    tb.appendChild(tr);
+  });
+  table.appendChild(tb);
+  wrap.appendChild(table);
+  box.append(title, meta, wrap);
+}
+
+function drawLegend(a) {
+  const box = $('mapLegend');
+  box.replaceChildren();
+  const zones = a.key === 'dt' ? ZONES.filter((z) => z.code === a.code) : [zoneOf(a.code, (a.dongs || [])[0]) || ZONES.find((z) => z.key === a.key)];
+  zones.filter(Boolean).forEach((z) => {
+    const s = document.createElement('span');
+    const sw = document.createElement('span');
+    sw.className = 'sw';
+    sw.style.background = zoneColor(z);
+    s.append(sw, document.createTextNode(z.name));
+    box.appendChild(s);
+  });
+  if (a.key === 'dt') {
+    const s = document.createElement('span');
+    const sw = document.createElement('span');
+    sw.className = 'sw';
+    sw.style.background = zoneColor(null);
+    s.append(sw, document.createTextNode('그 외 (방교·금곡·중동)'));
+    box.appendChild(s);
+  }
+}
+
+async function updateMap(a) {
+  mapState.area = a;
+  drawLegend(a);
+  $('mapInfo').replaceChildren();
+  if (!mapState.map) return;
+  const token = ++mapState.token;
+  mapState.overlays.forEach((o) => o.setMap(null));
+  mapState.overlays = [];
+  const list = (DATA.complexes[a.code] || []).filter((c) => !a.dongs || a.dongs.includes(c.dong));
+  if (!list.length) { mapMsg('최근 3개월 84㎡ 거래가 없습니다'); return; }
+  mapMsg('단지 위치를 찾는 중 (0/' + list.length + ')');
+  const bounds = new kakao.maps.LatLngBounds();
+  let done = 0, found = 0;
+  const queue = list.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const c = queue.shift();
+      const pos = await geocode(c, a.code);
+      if (token !== mapState.token) return;
+      done++;
+      if (pos) {
+        found++;
+        const z = zoneOf(a.code, c.dong);
+        const el = document.createElement('div');
+        el.className = 'map-pin';
+        el.style.background = zoneColor(z);
+        el.textContent = c.trades[0].price.toFixed(1);
+        el.title = c.apt;
+        el.addEventListener('click', () => {
+          if (mapState.selected) mapState.selected.classList.remove('sel');
+          el.classList.add('sel');
+          mapState.selected = el;
+          showInfo(c, z);
+        });
+        const latlng = new kakao.maps.LatLng(pos.lat, pos.lng);
+        const o = new kakao.maps.CustomOverlay({position: latlng, content: el, yAnchor: 0.5, clickable: true});
+        o.setMap(mapState.map);
+        mapState.overlays.push(o);
+        bounds.extend(latlng);
+      }
+      mapMsg(done < list.length ? `단지 위치를 찾는 중 (${done}/${list.length})` : '');
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (token !== mapState.token) return;
+  if (found) mapState.map.setBounds(bounds);
+  else mapMsg('단지 위치를 찾지 못했습니다');
+}
+window.__updateMap = updateMap;
+
+loadKakao().then(() => {
+  mapState.map = new kakao.maps.Map($('map'), {center: new kakao.maps.LatLng(37.2, 127.07), level: 7});
+  mapMsg('');
+  updateMap(DATA.areas.find((x) => x.key === sel.value) || DATA.areas[0]);
+}).catch((e) => {
+  mapMsg(e.message);
+  drawLegend(DATA.areas.find((x) => x.key === sel.value) || DATA.areas[0]);
+});
 
 // ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
 const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
