@@ -309,6 +309,7 @@ def main() -> int:
     here = Path(__file__).parent
     data = build(key, datetime.now(KST))
     render(data, here / "template.html", here / "site" / "index.html")
+    (here / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")  # 메일 요약용 (배포 안 함)
     print("site/index.html 생성 완료")
     return 0
 
