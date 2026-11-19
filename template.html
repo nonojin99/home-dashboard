@@ -197,7 +197,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <h2>단지 현황 <span class="muted">· 단지별 최근 거래 vs 직전 거래 vs 신고가</span></h2>
     <div class="sf">
       <label>지역<select id="cxArea"></select></label>
-      <label>단지명 검색 (자동 완성)<input id="cxQ" list="cxList" placeholder="예: 포레너스" autocomplete="off"><datalist id="cxList"></datalist></label>
+      <label>단지명 검색 (자동 완성)<input id="cxQ" list="cxList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="cxList"></datalist></label>
     </div>
     <p class="muted" id="cxMsg">지역을 고르면 단지 목록이 나옵니다.</p>
     <div class="tw"><table id="cxTable" hidden>
@@ -876,7 +876,7 @@ loadNotes();
     rows.forEach((r) => {
       const tr = document.createElement('tr');
       const T = window.__td;
-      T(tr, r.apt).style.textAlign = 'left'; T(tr, r.dong); T(tr, r.build_year || '—');
+      T(tr, (r.dong === '석우동' && !r.apt.startsWith('동탄') ? '동탄예당마을 ' : '') + r.apt).style.textAlign = 'left'; T(tr, r.dong); T(tr, r.build_year || '—');
       T(tr, eok(r.last_price) + ' (' + String(r.last_date).slice(2, 7) + ')');
       T(tr, sgn(r.chg_prev), r.chg_prev > 0 ? 'up' : r.chg_prev < 0 ? 'dn2' : '');
       T(tr, eok(r.high) + ' (' + String(r.high_date).slice(2, 7) + ')');
@@ -888,11 +888,13 @@ loadNotes();
   async function load() {
     if (sel.selectedIndex < 0) return;
     const a = sel.value === 'all' ? {codes: allCodes, dongs: null} : DATA.areas[+sel.value];
+    let qv = q.value.trim(), dongs = a.dongs && a.dongs.length ? a.dongs : null;
+    if (/예당/.test(qv)) { qv = qv.replace(/동탄|예당마을|예당/g, '').trim(); dongs = ['석우동']; }  // 예당마을 = 석우동
     g('cxMsg').textContent = '불러오는 중…';
     try {
       const res = await fetch(U + '/rest/v1/rpc/complex_overview', {
         method: 'POST', headers: {apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json'},
-        body: JSON.stringify({p_sgg: a.codes, p_dongs: a.dongs && a.dongs.length ? a.dongs : null, p_q: q.value.trim() || null, p_limit: 1500}),
+        body: JSON.stringify({p_sgg: a.codes, p_dongs: dongs, p_q: qv || null, p_limit: 1500}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data && data.message || res.status);
