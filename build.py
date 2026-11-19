@@ -268,16 +268,36 @@ def fetch_rates(key: str, now: datetime) -> dict | None:
     for name, stat, item in RATE_SERIES:
         url = ECOS_URL.format(key=urllib.parse.quote(key, safe=""), stat=stat, item=item,
                               start=RATE_START, end=now.strftime("%Y%m"))
-        try:
-            with urllib.request.urlopen(url, timeout=60) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            rows = body["StatisticSearch"]["row"]
-            out[name] = [[f"{r['TIME'][:4]}-{r['TIME'][4:]}", float(r["DATA_VALUE"])] for r in rows]
-            print(f"금리 {name}: {len(rows)}개월, 최근 {out[name][-1]}")
-        except Exception as e:
-            print(f"금리 {name} 실패: {e} / 응답: {str(locals().get('body', ''))[:200]}")
+        for attempt in range(1, 4):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                rows = body["StatisticSearch"]["row"]
+                out[name] = [[f"{r['TIME'][:4]}-{r['TIME'][4:]}", float(r["DATA_VALUE"])] for r in rows]
+                print(f"금리 {name}: {len(rows)}개월, 최근 {out[name][-1]}")
+                break
+            except Exception as e:
+                print(f"금리 {name} {attempt}/3회 실패: {e} / 응답: {str(locals().get('body', ''))[:200]}")
+                if attempt < 3:
+                    time.sleep(5)
+        else:
             return None
     return out
+
+
+RATE_CACHE = Path("rates_cache.json")
+
+
+def rates_with_cache(key: str, now: datetime) -> dict | None:
+    """ECOS가 느리거나 실패해도 마지막으로 받은 금리를 보여준다."""
+    r = fetch_rates(key, now)
+    if r:
+        RATE_CACHE.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+        return r
+    if RATE_CACHE.exists():
+        print("금리: 이번엔 못 받아 마지막 성공값을 씁니다")
+        return json.loads(RATE_CACHE.read_text(encoding="utf-8"))
+    return None
 
 
 def build(key: str, now: datetime) -> dict:
@@ -299,7 +319,7 @@ def build(key: str, now: datetime) -> dict:
             for k, name, code, dongs, group in AREAS
         ],
         "sggNames": SGG_NAMES,
-        "rates": fetch_rates(os.environ.get("ECOS_API_KEY", ""), now),
+        "rates": rates_with_cache(os.environ.get("ECOS_API_KEY", ""), now),
         "complexes": {code: complexes(trades[code], yms) for code in codes},
     }
 

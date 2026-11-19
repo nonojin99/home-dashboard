@@ -30,6 +30,12 @@ jobs:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           TRADE_INGEST_TOKEN: ${{ secrets.TRADE_INGEST_TOKEN }}
         run: python ingest.py
+      - name: 금리 캐시 (ECOS가 느릴 때 마지막 값 사용)
+        uses: actions/cache@v4
+        with:
+          path: rates_cache.json
+          key: rates-${{ github.run_id }}
+          restore-keys: rates-
       - name: 실거래가 받아서 페이지 만들기
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}

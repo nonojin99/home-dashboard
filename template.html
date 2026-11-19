@@ -312,8 +312,8 @@ function priceChart(rows) {
 
 function rateChart() {
   const R = DATA.rates;
-  if (!R || !R.base || !R.mortgage) return;
   $('rateSec').hidden = false;
+  if (!R || !R.base || !R.mortgage) { $('rateNote').textContent = '한국은행 ECOS 응답이 늦어 이번 갱신에는 금리를 받지 못했습니다. 다음 갱신(매일) 때 다시 시도합니다.'; return; }
   const lastOf = (s) => s[s.length - 1];
   $('rateNote').textContent = `최근 값: 기준금리 ${lastOf(R.base)[1].toFixed(2)}% (${lastOf(R.base)[0]}) · 주담대 ${lastOf(R.mortgage)[1].toFixed(2)}% (${lastOf(R.mortgage)[0]}). 한국은행 ECOS, 매월 발표 후 반영됩니다.`;
   const box = $('rateChart');
