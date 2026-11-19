@@ -82,7 +82,6 @@ main{padding-bottom:80px}
 .sf input{font:inherit;font-size:16px;width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
 .sbtn{font:inherit;font-size:15px;width:100%;padding:11px;border:0;border-radius:10px;background:var(--a);color:#fff;cursor:pointer}
 td.dn{color:var(--down);font-weight:600}
-#searchSec .tw{overflow-x:auto}
 .sf label:first-child{grid-column:1/-1}
 .tabs{display:flex;gap:6px}
 .tab{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer}
@@ -124,8 +123,15 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
   <section id="mapSec">
     <h2>단지 지도</h2>
     <div class="muted">핀 숫자는 단지별 가장 최근 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
+    <div class="map-legend" id="mapLegend"></div>
+    <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
+    <div class="map-info" id="mapInfo"></div>
+    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <button class="tab" id="mapReset">필터 초기화</button> <span class="muted" id="mapCount"></span> <span class="muted" id="mapAllNote"></span></div>
     <div class="sf" style="margin-top:8px">
       <label>단지 검색 (자동 완성 · 엔터로 이동)<input id="mapQ" list="mapList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="mapList"></datalist></label>
+    </div>
+    <details id="mapFilters" style="margin-top:6px"><summary>조건 필터 (면적 · 금액 · 추천 구분 · 핀 색 기준)</summary>
+    <div class="sf" style="margin-top:8px">
       <label>전용면적<select id="mSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option></select></label>
       <label>최근 거래 시점<select id="mMonths"><option value="1">1개월 이내</option><option value="3" selected>3개월 이내</option><option value="6">6개월 이내</option><option value="12">12개월 이내</option></select></label>
       <label>가격(억) 이상<input id="mMin" type="number" step="0.1" placeholder="제한 없음"></label>
@@ -134,10 +140,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
       <label>추천 구분<select id="mReco"><option value="all">전체</option><option value="drop10">신고가보다 10% 이상 싼 단지</option><option value="near">신고가 근처 (3% 이내)</option><option value="down">직전 거래보다 내린 단지</option><option value="hot">거래 활발 (30일 건수 증가)</option></select></label>
       <label>핀 색 기준<select id="mColor"><option value="drop" selected>신고가 대비 하락률</option><option value="zone">시·구 / 권역</option></select></label>
     </div>
-    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <button class="tab" id="mapReset">필터 초기화</button> <span class="muted" id="mapCount"></span> <span class="muted" id="mapAllNote"></span></div>
-    <div class="map-legend" id="mapLegend"></div>
-    <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
-    <div class="map-info" id="mapInfo"></div>
+    </details>
   </section>
 
   <section>
@@ -176,24 +179,6 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     </table></div>
   </section>
 
-  <section id="searchSec">
-    <h2>조건 검색 · 단지별 최근 거래가 vs 신고가</h2>
-    <div class="sf">
-      <label>지역<select id="sArea"></select></label>
-      <label>전용면적<select id="sSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option><option value="0-999">전체 면적 (신고가에 평형이 섞임)</option></select></label>
-      <label>가격(억) 이상<input id="sMin" type="number" step="0.1" value="8"></label>
-      <label>가격(억) 이하<input id="sMax" type="number" step="0.1" value="9"></label>
-      <label>준공 연도 이후<input id="sBuilt" type="number" step="1" value="2015"></label>
-      <label>최근 거래가 신고가 대비 하락(%) 이상<input id="sDrop" type="number" step="1" value="10"></label>
-      <label>최근 거래 시점<select id="sMonths"><option value="1">최근 1개월</option><option value="3" selected>최근 3개월</option><option value="6">최근 6개월</option><option value="12">최근 12개월</option></select></label>
-    </div>
-    <button id="sGo" class="sbtn">검색</button>
-    <p class="muted" id="sMsg">단지마다 선택한 전용면적의 가장 최근 거래가를 같은 단지 신고가(적재된 기간의 최고 거래가)와 비교합니다. 호가·매물이 아닌 실거래 기준이며, 84㎡ 외 면적은 전 평형 재적재가 끝난 기간만 포함합니다.</p>
-    <div class="tw"><table id="sTable" hidden>
-      <thead><tr><th>단지</th><th>동</th><th>준공</th><th>층</th><th>최근 거래가</th><th>신고가</th><th>신고가 대비</th><th>거래일</th></tr></thead>
-      <tbody id="sRows"></tbody>
-    </table></div>
-  </section>
 
   <details>
     <summary>지표 정의와 읽을 때 주의할 점</summary>
@@ -419,7 +404,7 @@ window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = w
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
 const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';
 const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
-const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: false, data: [], loadKey: '', q: '', pins: []};
+const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: true, data: [], loadKey: '', q: '', pins: []};
 
 // 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
 // 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
@@ -650,6 +635,7 @@ function setAll(on) {
   $('mapAll').textContent = on ? '선택 지역만 보기' : '전체 구역 보기';
   $('mapAllNote').textContent = on ? '모든 구역을 한 번에 찾느라 처음에는 1~2분 걸릴 수 있습니다' : '';
 }
+setAll(true);
 $('mapAll').addEventListener('click', () => { setAll(!mapState.all); if (mapState.area) updateMap(mapState.area); });
 ['mSize', 'mMonths'].forEach((id) => $(id).addEventListener('change', () => { if (mapState.area) updateMap(mapState.area); }));
 ['mReco', 'mColor'].forEach((id) => $(id).addEventListener('change', () => mapDraw()));
@@ -864,61 +850,6 @@ $('gbAdmin').addEventListener('click', async () => {
 });
 
 loadNotes();
-</script>
-<script>
-(function () {
-  const U = 'https://fpjgjwazqpfiffnsgume.supabase.co';
-  const K = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
-  const g = (id) => document.getElementById(id);
-  const sel = g('sArea');
-  const groups = {};
-  DATA.areas.forEach((a, i) => {
-    let og = groups[a.group];
-    if (!og) { og = document.createElement('optgroup'); og.label = a.group; sel.appendChild(og); groups[a.group] = og; }
-    const o = document.createElement('option');
-    o.value = i; o.textContent = a.name;
-    og.appendChild(o);
-  });
-  const td = (tr, text, cls) => { const c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); };
-  async function run() {
-    const a = DATA.areas[+sel.value];
-    const num = (id, d) => { const v = parseFloat(g(id).value); return isNaN(v) ? d : v; };
-    const body = {
-      p_sgg: a.codes, p_dongs: a.dongs && a.dongs.length ? a.dongs : null,
-      p_min: Math.round(num('sMin', 0) * 10000), p_max: Math.round(num('sMax', 100) * 10000),
-      p_build_min: Math.round(num('sBuilt', 0)), p_months: +g('sMonths').value,
-      p_min_drop: num('sDrop', 0), p_limit: 200,
-      p_area_min: +g('sSize').value.split('-')[0], p_area_max: +g('sSize').value.split('-')[1],
-    };
-    const msg = g('sMsg'), tb = g('sRows');
-    msg.textContent = '검색 중…';
-    try {
-      const res = await fetch(U + '/rest/v1/rpc/search_trades', {
-        method: 'POST', headers: {apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-      });
-      const rows = await res.json();
-      if (!res.ok) throw new Error(rows && rows.message || res.status);
-      tb.textContent = '';
-      rows.forEach((r) => {
-        const tr = document.createElement('tr');
-        td(tr, r.apt); td(tr, r.dong); td(tr, r.build_year || '—'); td(tr, r.floor == null ? '—' : r.floor + '층');
-        td(tr, (r.price / 10000).toFixed(2) + '억');
-        td(tr, (r.high / 10000).toFixed(2) + '억 (' + String(r.high_date).slice(0, 7) + ')');
-        td(tr, '-' + r.drop_pct + '%', 'dn');
-        td(tr, r.deal_date);
-        tb.appendChild(tr);
-      });
-      g('sTable').hidden = !rows.length;
-      msg.textContent = rows.length
-        ? rows.length + '개 단지 · 신고가 대비 하락률 큰 순 (거래 이력이 쌓이는 중이면 과거 신고가가 빠져 있을 수 있어요)'
-        : '조건에 맞는 거래가 없습니다. 조건을 완화해 보세요.';
-    } catch (e) {
-      msg.textContent = '검색 실패: ' + e.message;
-    }
-  }
-  g('sGo').addEventListener('click', run);
-})();
 </script>
 <script>
 (function () {
