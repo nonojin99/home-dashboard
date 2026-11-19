@@ -93,6 +93,12 @@ td.dn{color:var(--down);font-weight:600}
 #tabSum .tw{overflow-x:auto}
 td.sg{font-weight:600}
 td.sg.good{color:var(--down)}td.sg.bad{color:var(--up)}td.sg.warn{color:var(--b)}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable::after{content:attr(data-dir);font-size:9px;margin-left:2px;color:var(--a)}
+#tabCx{display:flex;flex-direction:column;gap:22px}
+#tabCx[hidden]{display:none}
+#tabCx .tw{overflow-x:auto}
+td.up{color:var(--up)}td.dn2{color:var(--down)}
 </style>
 </head>
 <body>
@@ -102,7 +108,7 @@ td.sg.good{color:var(--down)}td.sg.bad{color:var(--up)}td.sg.warn{color:var(--b)
     <div class="muted">국토교통부 실거래 신고 기준 · 최근 6개월 · <span id="updated"></span> 갱신</div>
   </header>
 
-  <nav class="tabs"><button class="tab on" data-tab="Dash">대시보드</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
+  <nav class="tabs"><button class="tab on" data-tab="Dash">대시보드</button><button class="tab" data-tab="Cx">단지 현황</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
 <div id="tabDash">
   <select id="area" aria-label="지역"></select>
 
@@ -186,13 +192,27 @@ td.sg.good{color:var(--down)}td.sg.bad{color:var(--up)}td.sg.warn{color:var(--b)
     <p>전세는 월세가 0원인 계약만 셌습니다. 기준금리와 매물 수는 이 자료에 없습니다.</p>
   </details>
 </div>
+<div id="tabCx" hidden>
+  <section>
+    <h2>단지 현황 <span class="muted">· 단지별 최근 거래 vs 직전 거래 vs 신고가</span></h2>
+    <div class="sf">
+      <label>지역<select id="cxArea"></select></label>
+      <label>단지명 검색 (자동 완성)<input id="cxQ" list="cxList" placeholder="예: 포레너스" autocomplete="off"><datalist id="cxList"></datalist></label>
+    </div>
+    <p class="muted" id="cxMsg">지역을 고르면 단지 목록이 나옵니다.</p>
+    <div class="tw"><table id="cxTable" hidden>
+      <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="dong">동</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="chg_prev">직전 대비</th><th class="sortable" data-k="high">신고가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th></tr></thead>
+      <tbody id="cxRows"></tbody>
+    </table></div>
+  </section>
+</div>
 <div id="tabSum" hidden>
   <div class="note" id="sumNote"></div>
   <section>
     <h2>지역별 신호 <span class="muted" id="sumAsof"></span></h2>
     <p class="muted" id="sumRate"></p>
     <div class="tw"><table id="sumTable">
-      <thead><tr><th style="text-align:left">지역</th><th>중위가</th><th>전월</th><th>3개월</th><th>거래량</th><th>평균 대비</th><th>전세가율</th><th>신호</th></tr></thead>
+      <thead><tr><th class="sortable" data-k="name" style="text-align:left">지역</th><th class="sortable" data-k="sale">중위가</th><th class="sortable" data-k="mom">전월</th><th class="sortable" data-k="m3">3개월</th><th class="sortable" data-k="trades">거래량</th><th class="sortable" data-k="tvs">평균 대비</th><th class="sortable" data-k="ratio">전세가율</th><th class="sortable" data-k="signal">신호</th></tr></thead>
       <tbody id="sumRows"></tbody>
     </table></div>
     <p class="muted">신호는 중위가 3개월 변화(±1%)와 지난달 거래량의 직전 평균 대비(±10%)를 조합한 단순 규칙입니다. 중위가는 단지 구성에 따라 출렁이니 방향만 참고하세요. 지표는 매일 갱신되고, 같은 내용이 매주 월요일 아침 메일로도 갑니다.</p>
@@ -771,8 +791,7 @@ loadNotes();
   const g = (id) => document.getElementById(id);
   document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b));
-    g('tabDash').hidden = b.dataset.tab !== 'Dash';
-    g('tabSum').hidden = b.dataset.tab !== 'Sum';
+    ['Dash', 'Cx', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
     if (b.dataset.tab === 'Dash') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
   }));
   const S = DATA.summary;
@@ -783,13 +802,36 @@ loadNotes();
   g('sumAsof').textContent = '· ' + DATA.updated.slice(0, 10) + ' 기준, 지난달 확정 수치';
   g('sumRate').textContent = S.rateLine;
   const tb = g('sumRows');
-  S.rows.forEach((r) => {
-    const tr = document.createElement('tr');
-    td(tr, r.name).style.textAlign = 'left';
-    td(tr, r.sale == null ? '—' : r.sale.toFixed(2) + '억'); td(tr, sgn(r.mom)); td(tr, sgn(r.m3));
-    td(tr, r.trades); td(tr, sgn(r.tvs)); td(tr, r.ratio == null ? '—' : r.ratio.toFixed(1) + '%');
-    td(tr, r.signal, 'sg ' + (SG[r.signal] || ''));
-    tb.appendChild(tr);
+  const sortBy = (table, state, rows, draw) => {
+    const arrow = () => table.querySelectorAll('th.sortable').forEach((h) => { h.dataset.dir = h.dataset.k === state.k ? (state.dir > 0 ? '▲' : '▼') : ''; });
+    const go = () => {
+      const k = state.k, d = state.dir;
+      rows.sort((x, y) => {
+        const a = x[k], b = y[k];
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return (typeof a === 'string' ? a.localeCompare(b, 'ko') : a - b) * d;
+      });
+      arrow(); draw();
+    };
+    table.querySelectorAll('th.sortable').forEach((h) => h.addEventListener('click', () => {
+      state.dir = state.k === h.dataset.k ? -state.dir : (h.dataset.k === 'name' || h.dataset.k === 'apt' || h.dataset.k === 'dong' ? 1 : -1);
+      state.k = h.dataset.k; go();
+    }));
+    go();
+  };
+  window.__sortBy = sortBy; window.__td = td;
+  sortBy(g('sumTable'), {k: 'm3', dir: 1}, S.rows, () => {
+    tb.textContent = '';
+    S.rows.forEach((r) => {
+      const tr = document.createElement('tr');
+      td(tr, r.name).style.textAlign = 'left';
+      td(tr, r.sale == null ? '—' : r.sale.toFixed(2) + '억'); td(tr, sgn(r.mom)); td(tr, sgn(r.m3));
+      td(tr, r.trades); td(tr, sgn(r.tvs)); td(tr, r.ratio == null ? '—' : r.ratio.toFixed(1) + '%');
+      td(tr, r.signal, 'sg ' + (SG[r.signal] || ''));
+      tb.appendChild(tr);
+    });
   });
   const db = g('dropRows');
   S.drops.forEach((r) => {
@@ -807,6 +849,67 @@ loadNotes();
       '부터 확보). 신고가는 확보된 기간의 최고가라서 지금은 실제보다 낮게 잡혀 있고, 약 ' + (S.etaDays || '?') + '일 뒤(' +
       (eta.getMonth() + 1) + '월 ' + eta.getDate() + '일경) 2019년까지 적재가 끝나면 신고가 대비 수치가 정확해집니다.';
   } else { g('sumNote').hidden = true; }
+})();
+</script>
+<script>
+(function () {
+  const g = (id) => document.getElementById(id);
+  const U = 'https://fpjgjwazqpfiffnsgume.supabase.co';
+  const K = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
+  const sel = g('cxArea'), q = g('cxQ'), tb = g('cxRows');
+  const groups = {};
+  DATA.areas.forEach((a, i) => {
+    let og = groups[a.group];
+    if (!og) { og = document.createElement('optgroup'); og.label = a.group; sel.appendChild(og); groups[a.group] = og; }
+    const o = document.createElement('option'); o.value = i; o.textContent = a.name; og.appendChild(o);
+  });
+  sel.selectedIndex = -1;
+  const sgn = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+  const eok = (v) => (v / 10000).toFixed(2) + '억';
+  let rows = [], loaded = false, timer = null;
+  const state = {k: 'drop_pct', dir: -1};
+  function draw() {
+    tb.textContent = '';
+    rows.forEach((r) => {
+      const tr = document.createElement('tr');
+      const T = window.__td;
+      T(tr, r.apt).style.textAlign = 'left'; T(tr, r.dong); T(tr, r.build_year || '—');
+      T(tr, eok(r.last_price) + ' (' + String(r.last_date).slice(2, 7) + ')');
+      T(tr, sgn(r.chg_prev), r.chg_prev > 0 ? 'up' : r.chg_prev < 0 ? 'dn2' : '');
+      T(tr, eok(r.high) + ' (' + String(r.high_date).slice(2, 7) + ')');
+      T(tr, r.drop_pct > 0 ? '-' + r.drop_pct + '%' : '신고가', r.drop_pct > 0 ? 'sg good' : 'sg warn');
+      T(tr, r.cnt30 + ' (직전30일 ' + r.cnt30_prev + ')');
+      tb.appendChild(tr);
+    });
+  }
+  async function load() {
+    if (sel.selectedIndex < 0) return;
+    const a = DATA.areas[+sel.value];
+    g('cxMsg').textContent = '불러오는 중…';
+    try {
+      const res = await fetch(U + '/rest/v1/rpc/complex_overview', {
+        method: 'POST', headers: {apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json'},
+        body: JSON.stringify({p_sgg: a.codes, p_dongs: a.dongs && a.dongs.length ? a.dongs : null, p_q: q.value.trim() || null, p_limit: 1000}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data && data.message || res.status);
+      rows.length = 0; data.forEach((r) => rows.push(r));
+      if (!q.value.trim()) {
+        const dl = g('cxList'); dl.textContent = '';
+        [...new Set(rows.map((r) => r.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
+      }
+      g('cxTable').hidden = !rows.length;
+      g('cxMsg').textContent = rows.length ? rows.length + '개 단지 · 열 제목을 눌러 정렬 · 신고가는 적재된 기간 기준' : '해당하는 단지가 없습니다.';
+      if (!loaded) { loaded = true; window.__sortBy(g('cxTable'), state, rows, draw); } else { resort(); }
+    } catch (e) { g('cxMsg').textContent = '불러오기 실패: ' + e.message; }
+  }
+  function resort() {
+    const k = state.k, d = state.dir;
+    rows.sort((x, y) => { const a = x[k], b = y[k]; if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1; return (typeof a === 'string' ? a.localeCompare(b, 'ko') : a - b) * d; });
+    draw();
+  }
+  sel.addEventListener('change', () => { q.value = ''; load(); });
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 350); });
 })();
 </script>
 
