@@ -122,9 +122,19 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
   </section>
 
   <section id="mapSec">
-    <h2>단지 지도 · 최근 3개월 84㎡</h2>
-    <div class="muted">숫자는 단지별 가장 최근 84㎡ 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
-    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <span class="muted" id="mapAllNote"></span></div>
+    <h2>단지 지도</h2>
+    <div class="muted">핀 숫자는 단지별 가장 최근 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
+    <div class="sf" style="margin-top:8px">
+      <label>단지 검색 (자동 완성 · 엔터로 이동)<input id="mapQ" list="mapList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="mapList"></datalist></label>
+      <label>전용면적<select id="mSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option></select></label>
+      <label>최근 거래 시점<select id="mMonths"><option value="1">1개월 이내</option><option value="3" selected>3개월 이내</option><option value="6">6개월 이내</option><option value="12">12개월 이내</option></select></label>
+      <label>가격(억) 이상<input id="mMin" type="number" step="0.1" placeholder="제한 없음"></label>
+      <label>가격(억) 이하<input id="mMax" type="number" step="0.1" placeholder="제한 없음"></label>
+      <label>준공 연도 이후<input id="mBuilt" type="number" step="1" placeholder="제한 없음"></label>
+      <label>추천 구분<select id="mReco"><option value="all">전체</option><option value="drop10">신고가보다 10% 이상 싼 단지</option><option value="near">신고가 근처 (3% 이내)</option><option value="down">직전 거래보다 내린 단지</option><option value="hot">거래 활발 (30일 건수 증가)</option></select></label>
+      <label>핀 색 기준<select id="mColor"><option value="drop" selected>신고가 대비 하락률</option><option value="zone">시·구 / 권역</option></select></label>
+    </div>
+    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <button class="tab" id="mapReset">필터 초기화</button> <span class="muted" id="mapCount"></span> <span class="muted" id="mapAllNote"></span></div>
     <div class="map-legend" id="mapLegend"></div>
     <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
     <div class="map-info" id="mapInfo"></div>
@@ -409,7 +419,7 @@ window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = w
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
 const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';
 const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
-const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: false};
+const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: false, data: [], loadKey: '', q: '', pins: []};
 
 // 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
 // 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
@@ -454,37 +464,66 @@ function geocode(c, code) {
   return p;
 }
 
-function showInfo(c, z) {
-  const box = $('mapInfo');
-  box.replaceChildren();
-  const title = document.createElement('b');
-  title.textContent = c.apt;
-  const meta = document.createElement('div');
-  meta.className = 'muted';
-  meta.textContent = `${c.dong} ${c.jibun} · ${c.built}년 준공 · ${z ? z.name : ''} · 최근 3개월 84㎡ ${c.count}건`;
-  const wrap = document.createElement('div');
-  wrap.className = 'scroll';
-  const table = document.createElement('table');
-  table.innerHTML = '<thead><tr><th class="l">계약일</th><th>층</th><th>가격</th></tr></thead>';
-  const tb = document.createElement('tbody');
-  c.trades.forEach((t) => {
-    const tr = document.createElement('tr');
-    cell(tr, t.date, true); cell(tr, t.floor); cell(tr, eok(t.price));
-    tb.appendChild(tr);
-  });
-  table.appendChild(tb);
-  wrap.appendChild(table);
-  box.append(title, meta, wrap);
+const fmtEok = (v) => (v / 10000).toFixed(2) + '억';
+const sgn1 = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+const DROP_LEGEND = [['#dc2626', '신고가'], ['#f59e0b', '신고가보다 0~5% 낮음'], ['#84cc16', '5~10%'], ['#16a34a', '10~20%'], ['#0f766e', '20% 이상']];
+const dropColor = (d) => (d <= 0 ? '#dc2626' : d < 5 ? '#f59e0b' : d < 10 ? '#84cc16' : d < 20 ? '#16a34a' : '#0f766e');
+const sizeRange = () => $('mSize').value.split('-').map(Number);
+const numVal = (id) => { const v = parseFloat($(id).value); return isNaN(v) ? null : v; };
+
+// 검색어 해석: "예당마을"은 석우동 단지
+function matchQ(c, q) {
+  let s = q.trim().toLowerCase();
+  if (!s) return true;
+  if (/예당/.test(s)) {
+    if (c.dong !== '석우동') return false;
+    s = s.replace(/동탄|예당마을|예당/g, '').trim();
+  }
+  return !s || c.apt.toLowerCase().includes(s);
 }
 
-function drawLegend(a) {
+function mapScope() {
+  if (mapState.all) return {codes: CODE_ORDER, dongs: null};
+  const a = mapState.area;
+  return {codes: a.codes, dongs: a.dongs && a.dongs.length ? a.dongs : null};
+}
+
+async function mapLoad() {
+  const sc = mapScope(), [lo, hi] = sizeRange(), months = +$('mMonths').value;
+  const key = JSON.stringify([sc.codes, sc.dongs, lo, hi, months]);
+  if (key === mapState.loadKey) return;
+  mapMsg('단지 목록을 불러오는 중…');
+  const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
+    method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
+    body: JSON.stringify({p_sgg: sc.codes, p_dongs: sc.dongs, p_area_min: lo, p_area_max: hi, p_months: months, p_limit: 2000}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data && data.message) || res.status);
+  mapState.data = data;
+  mapState.loadKey = key;
+  const dl = $('mapList');
+  dl.replaceChildren();
+  [...new Set(data.map((c) => c.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
+}
+
+function mapFiltered() {
+  const pmin = numVal('mMin'), pmax = numVal('mMax'), built = numVal('mBuilt'), reco = $('mReco').value;
+  return mapState.data.filter((c) => {
+    const p = c.last_price / 10000;
+    if (pmin != null && p < pmin) return false;
+    if (pmax != null && p > pmax) return false;
+    if (built != null && (c.build_year || 0) < built) return false;
+    if (reco === 'drop10' && !(c.drop_pct >= 10)) return false;
+    if (reco === 'near' && !(c.drop_pct <= 3)) return false;
+    if (reco === 'down' && !(c.chg_prev != null && c.chg_prev < 0)) return false;
+    if (reco === 'hot' && !(c.cnt30 > c.cnt30_prev)) return false;
+    return matchQ(c, mapState.q);
+  });
+}
+
+function drawLegend() {
   const box = $('mapLegend');
   box.replaceChildren();
-  if (mapState.all) {
-    CODE_ORDER.forEach((c) => { const s = document.createElement('span'); const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = CODE_COLORS[CODE_ORDER.indexOf(c) % CODE_COLORS.length]; s.append(sw, document.createTextNode(codeName(c))); box.appendChild(s); });
-    return;
-  }
-  const zones = a.dongs ? [a] : ZONES.filter((z) => overlaps(z, a));
   const add = (color, text) => {
     const s = document.createElement('span');
     const sw = document.createElement('span');
@@ -493,50 +532,92 @@ function drawLegend(a) {
     s.append(sw, document.createTextNode(text));
     box.appendChild(s);
   };
+  if ($('mColor').value === 'drop') { DROP_LEGEND.forEach(([c, t]) => add(c, t)); return; }
+  if (mapState.all) { CODE_ORDER.forEach((c) => add(CODE_COLORS[CODE_ORDER.indexOf(c) % CODE_COLORS.length], codeName(c))); return; }
+  const a = mapState.area;
+  if (!a) return;
+  const zones = a.dongs ? [a] : ZONES.filter((z) => overlaps(z, a));
   zones.forEach((z) => add(zoneColor(z), z.name));
   if (!a.dongs && zones.some((z) => z.dongs)) add(zoneColor(null), '그 외 동');
 }
 
-async function updateMap(sel) {
-  mapState.area = sel;
-  const a = mapState.all ? {codes: CODE_ORDER, dongs: null} : sel;
-  drawLegend(a);
-  $('mapInfo').replaceChildren();
-  if (!mapState.map) return;
+async function showInfo(c, zoneName) {
+  const box = $('mapInfo');
+  box.replaceChildren();
+  const title = document.createElement('b');
+  title.textContent = c.apt;
+  const meta = document.createElement('div');
+  meta.className = 'muted';
+  meta.textContent = `${c.dong} ${c.jibun} · ${c.build_year || '—'}년 준공 · ${zoneName}`;
+  const stat = document.createElement('div');
+  stat.textContent = `최근 ${fmtEok(c.last_price)} (${c.last_date}) · 직전 대비 ${sgn1(c.chg_prev)} · 신고가 ${fmtEok(c.high)} (${String(c.high_date).slice(0, 7)}) ` +
+    (c.drop_pct > 0 ? `대비 -${c.drop_pct}%` : '= 최근가') + ` · 최근 30일 ${c.cnt30}건 (직전 30일 ${c.cnt30_prev}건)`;
+  const wrap = document.createElement('div');
+  wrap.className = 'scroll';
+  wrap.textContent = '거래 내역 불러오는 중…';
+  box.append(title, meta, stat, wrap);
+  try {
+    const [lo, hi] = sizeRange();
+    const res = await fetch(SB_URL + '/rest/v1/rpc/complex_trades', {
+      method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
+      body: JSON.stringify({p_sgg: c.sgg_cd, p_dong: c.dong, p_jibun: c.jibun, p_apt: c.apt, p_area_min: lo, p_area_max: hi, p_limit: 8}),
+    });
+    const rows = await res.json();
+    if (!res.ok) throw new Error(rows && rows.message || res.status);
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th class="l">계약일</th><th>면적</th><th>층</th><th>가격</th></tr></thead>';
+    const tb = document.createElement('tbody');
+    rows.forEach((t) => {
+      const tr = document.createElement('tr');
+      cell(tr, t.deal_date, true); cell(tr, t.area == null ? '84㎡대' : Math.round(t.area) + '㎡'); cell(tr, t.floor == null ? '—' : t.floor + '층'); cell(tr, fmtEok(t.price));
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    wrap.replaceChildren(table);
+  } catch (e) { wrap.textContent = '거래 내역을 불러오지 못했습니다: ' + e.message; }
+}
+
+async function mapDraw(focus) {
   const token = ++mapState.token;
   mapState.overlays.forEach((o) => o.setMap(null));
   mapState.overlays = [];
-  const list = a.codes.flatMap((code) => (DATA.complexes[code] || []).map((c) => ({...c, code})))
-    .filter((c) => !a.dongs || a.dongs.includes(c.dong));
-  if (!list.length) { mapMsg('최근 3개월 84㎡ 거래가 없습니다'); return; }
+  mapState.pins = [];
+  drawLegend();
+  const list = mapFiltered();
+  $('mapCount').textContent = mapState.data.length ? `${list.length}개 단지 (조건 전 ${mapState.data.length}개)` : '';
+  if (!mapState.map) return;
+  if (!list.length) { mapMsg(mapState.data.length ? '조건에 맞는 단지가 없습니다' : '최근 거래가 있는 단지가 없습니다'); return; }
   mapMsg('단지 위치를 찾는 중 (0/' + list.length + ')');
   const bounds = new kakao.maps.LatLngBounds();
   let done = 0, found = 0;
   const queue = list.slice();
+  const byDrop = $('mColor').value === 'drop';
   const worker = async () => {
     while (queue.length) {
       const c = queue.shift();
-      const pos = await geocode(c, c.code);
+      const pos = await geocode({dong: c.dong, jibun: c.jibun, apt: c.apt}, c.sgg_cd);
       if (token !== mapState.token) return;
       done++;
       if (pos) {
         found++;
-        const z = mapState.all ? {name: codeName(c.code)} : zoneOf(c.code, c.dong);
+        const z = mapState.all ? {name: codeName(c.sgg_cd)} : zoneOf(c.sgg_cd, c.dong);
         const el = document.createElement('div');
         el.className = 'map-pin';
-        el.style.background = mapState.all ? CODE_COLORS[CODE_ORDER.indexOf(c.code) % CODE_COLORS.length] : zoneColor(z);
-        el.textContent = c.trades[0].price.toFixed(1);
+        el.style.background = byDrop ? dropColor(c.drop_pct) : (mapState.all ? CODE_COLORS[CODE_ORDER.indexOf(c.sgg_cd) % CODE_COLORS.length] : zoneColor(z));
+        el.textContent = (c.last_price / 10000).toFixed(1);
         el.title = c.apt;
-        el.addEventListener('click', () => {
+        const pick = () => {
           if (mapState.selected) mapState.selected.classList.remove('sel');
           el.classList.add('sel');
           mapState.selected = el;
-          showInfo(c, z);
-        });
+          showInfo(c, z ? z.name : '');
+        };
+        el.addEventListener('click', pick);
         const latlng = new kakao.maps.LatLng(pos.lat, pos.lng);
         const o = new kakao.maps.CustomOverlay({position: latlng, content: el, yAnchor: 0.5, clickable: true});
         o.setMap(mapState.map);
         mapState.overlays.push(o);
+        mapState.pins.push({c, pick, latlng});
         bounds.extend(latlng);
       }
       mapMsg(done < list.length ? `단지 위치를 찾는 중 (${done}/${list.length})` : '');
@@ -544,16 +625,50 @@ async function updateMap(sel) {
   };
   await Promise.all([worker(), worker(), worker(), worker()]);
   if (token !== mapState.token) return;
-  if (found) mapState.map.setBounds(bounds);
-  else mapMsg('단지 위치를 찾지 못했습니다');
+  if (!found) { mapMsg('단지 위치를 찾지 못했습니다'); return; }
+  mapState.map.setBounds(bounds);
+  if (focus && mapState.q && mapState.pins.length) {
+    const p = mapState.pins[0];
+    mapState.map.setLevel(3);
+    mapState.map.setCenter(p.latlng);
+    p.pick();
+  }
+}
+
+async function updateMap(sel) {
+  mapState.area = sel;
+  drawLegend();
+  if (!mapState.map) return;
+  try { await mapLoad(); } catch (e) { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); return; }
+  await mapDraw();
 }
 window.__updateMap = updateMap;
-$('mapAll').addEventListener('click', () => {
-  mapState.all = !mapState.all;
-  $('mapAll').classList.toggle('on', mapState.all);
-  $('mapAll').textContent = mapState.all ? '선택 지역만 보기' : '전체 구역 보기';
-  $('mapAllNote').textContent = mapState.all ? '모든 구역을 한 번에 찾느라 처음에는 1~2분 걸릴 수 있습니다' : '';
-  if (mapState.area) updateMap(mapState.area);
+
+function setAll(on) {
+  mapState.all = on;
+  $('mapAll').classList.toggle('on', on);
+  $('mapAll').textContent = on ? '선택 지역만 보기' : '전체 구역 보기';
+  $('mapAllNote').textContent = on ? '모든 구역을 한 번에 찾느라 처음에는 1~2분 걸릴 수 있습니다' : '';
+}
+$('mapAll').addEventListener('click', () => { setAll(!mapState.all); if (mapState.area) updateMap(mapState.area); });
+['mSize', 'mMonths'].forEach((id) => $(id).addEventListener('change', () => { if (mapState.area) updateMap(mapState.area); }));
+['mReco', 'mColor'].forEach((id) => $(id).addEventListener('change', () => mapDraw()));
+let mapTimer = null;
+['mMin', 'mMax', 'mBuilt'].forEach((id) => $(id).addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => mapDraw(), 400); }));
+async function runSearch(focus) {
+  mapState.q = $('mapQ').value.trim();
+  if (mapState.q && mapState.data.length && !mapState.all && !mapState.data.some((c) => matchQ(c, mapState.q))) {
+    setAll(true);  // 선택 지역에 없으면 전체 구역에서 찾는다
+    try { await mapLoad(); } catch (e) { mapMsg('불러오지 못했습니다: ' + e.message); return; }
+  }
+  await mapDraw(focus);
+}
+$('mapQ').addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => runSearch(false), 450); });
+$('mapQ').addEventListener('change', () => runSearch(true));
+$('mapQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(mapTimer); runSearch(true); } });
+$('mapReset').addEventListener('click', () => {
+  ['mMin', 'mMax', 'mBuilt', 'mapQ'].forEach((id) => { $(id).value = ''; });
+  $('mReco').value = 'all'; $('mapQ').dispatchEvent(new Event('change'));
 });
 
 loadKakao().then(() => {
@@ -808,8 +923,8 @@ loadNotes();
 <script>
 (function () {
   const g = (id) => document.getElementById(id);
-  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.tabs .tab').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs .tab').forEach((x) => x.classList.toggle('on', x === b));
     ['Dash', 'Cx', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
     if (b.dataset.tab === 'Dash') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
   }));
