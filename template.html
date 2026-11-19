@@ -124,6 +124,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
   <section id="mapSec">
     <h2>단지 지도 · 최근 3개월 84㎡</h2>
     <div class="muted">숫자는 단지별 가장 최근 84㎡ 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
+    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <span class="muted" id="mapAllNote"></span></div>
     <div class="map-legend" id="mapLegend"></div>
     <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
     <div class="map-info" id="mapInfo"></div>
@@ -408,13 +409,16 @@ window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = w
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
 const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';
 const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
-const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null};
+const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: false};
 
 // 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
 // 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
 const overlaps = (a, b) => a.codes.some((c) => b.codes.includes(c));
 const ZONES = DATA.areas.filter((a) => a.dongs || !DATA.areas.some((b) => b.dongs && overlaps(a, b)));
 const zoneOf = (code, dong) => ZONES.find((z) => z.codes.includes(code) && (!z.dongs || z.dongs.includes(dong)));
+const CODE_ORDER = [...new Set(DATA.areas.flatMap((a) => a.codes))];
+const CODE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f', '#0f172a', '#ea580c', '#9333ea', '#0d9488'];
+const codeName = (c) => (DATA.sggNames[c] || c).split(' ').slice(-1)[0];
 const zoneColor = (z) => (z ? ZONE_COLORS[ZONES.indexOf(z) % ZONE_COLORS.length] : '#6b7280');
 
 function mapMsg(text) {
@@ -476,6 +480,10 @@ function showInfo(c, z) {
 function drawLegend(a) {
   const box = $('mapLegend');
   box.replaceChildren();
+  if (mapState.all) {
+    CODE_ORDER.forEach((c) => { const s = document.createElement('span'); const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = CODE_COLORS[CODE_ORDER.indexOf(c) % CODE_COLORS.length]; s.append(sw, document.createTextNode(codeName(c))); box.appendChild(s); });
+    return;
+  }
   const zones = a.dongs ? [a] : ZONES.filter((z) => overlaps(z, a));
   const add = (color, text) => {
     const s = document.createElement('span');
@@ -489,8 +497,9 @@ function drawLegend(a) {
   if (!a.dongs && zones.some((z) => z.dongs)) add(zoneColor(null), '그 외 동');
 }
 
-async function updateMap(a) {
-  mapState.area = a;
+async function updateMap(sel) {
+  mapState.area = sel;
+  const a = mapState.all ? {codes: CODE_ORDER, dongs: null} : sel;
   drawLegend(a);
   $('mapInfo').replaceChildren();
   if (!mapState.map) return;
@@ -512,10 +521,10 @@ async function updateMap(a) {
       done++;
       if (pos) {
         found++;
-        const z = zoneOf(c.code, c.dong);
+        const z = mapState.all ? {name: codeName(c.code)} : zoneOf(c.code, c.dong);
         const el = document.createElement('div');
         el.className = 'map-pin';
-        el.style.background = zoneColor(z);
+        el.style.background = mapState.all ? CODE_COLORS[CODE_ORDER.indexOf(c.code) % CODE_COLORS.length] : zoneColor(z);
         el.textContent = c.trades[0].price.toFixed(1);
         el.title = c.apt;
         el.addEventListener('click', () => {
@@ -539,6 +548,13 @@ async function updateMap(a) {
   else mapMsg('단지 위치를 찾지 못했습니다');
 }
 window.__updateMap = updateMap;
+$('mapAll').addEventListener('click', () => {
+  mapState.all = !mapState.all;
+  $('mapAll').classList.toggle('on', mapState.all);
+  $('mapAll').textContent = mapState.all ? '선택 지역만 보기' : '전체 구역 보기';
+  $('mapAllNote').textContent = mapState.all ? '모든 구역을 한 번에 찾느라 처음에는 1~2분 걸릴 수 있습니다' : '';
+  if (mapState.area) updateMap(mapState.area);
+});
 
 loadKakao().then(() => {
   mapState.map = new kakao.maps.Map($('map'), {center: new kakao.maps.LatLng(37.2, 127.07), level: 7});
