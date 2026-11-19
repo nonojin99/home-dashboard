@@ -1,7 +1,8 @@
 """84㎡ 거래 이력을 Supabase에 적재한다.
 
+- 모든 전용면적 거래를 적재한다 (ver 2). 예전 ver 1은 84㎡만 담았으므로 다시 받는다.
 - 최근 REFRESH_MONTHS개월은 매번 통째로 교체한다 (뒤늦은 해제·신고 반영).
-- 그보다 오래된 달은 아직 적재되지 않은 것부터 하루 BACKFILL_PER_RUN개씩 채운다.
+- 그보다 오래된 달은 ver 2가 아닌 것부터 하루 BACKFILL_PER_RUN개씩 채운다.
 """
 import hashlib
 import json
@@ -16,7 +17,7 @@ SB_URL = "https://fpjgjwazqpfiffnsgume.supabase.co"
 SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc"  # 공개용 anon 키 (사이트에도 들어 있음)
 START_YM = "201901"
 REFRESH_MONTHS = 3
-BACKFILL_PER_RUN = int(os.environ.get("BACKFILL_PER_RUN", "90"))
+BACKFILL_PER_RUN = int(os.environ.get("BACKFILL_PER_RUN", "120"))
 
 
 def rpc(name, body):
@@ -30,18 +31,24 @@ def rpc(name, body):
 
 
 def loaded_months():
-    req = urllib.request.Request(
-        f"{SB_URL}/rest/v1/apt_ingest_log?select=sgg_cd,ym&limit=5000",
-        headers={"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"},
-    )
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return {(x["sgg_cd"], x["ym"]) for x in json.load(r)}
+    out, off = set(), 0
+    while True:  # PostgREST는 한 번에 최대 1000행이라 나눠 읽는다
+        req = urllib.request.Request(
+            f"{SB_URL}/rest/v1/apt_ingest_log?select=sgg_cd,ym&ver=gte.2&order=sgg_cd,ym&limit=1000&offset={off}",
+            headers={"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:
+            page = json.load(r)
+        out |= {(x["sgg_cd"], x["ym"]) for x in page}
+        if len(page) < 1000:
+            return out
+        off += 1000
 
 
 def rows_for(code, ym, key):
     rows = []
     for t in build.parse_trades(build.fetch_all(build.TRADE_URL, code, ym, key)):
-        if not build.is84(t):
+        if not t["area"] > 0:
             continue
         raw = "|".join(str(t[k]) for k in ("apt", "dong", "jibun", "area", "floor", "price", "date"))
         rows.append(
@@ -54,6 +61,7 @@ def rows_for(code, ym, key):
                 "floor": int(t["floor"]) if t["floor"].lstrip("-").isdigit() else None,
                 "price": t["price"],
                 "deal_date": t["date"],
+                "area": t["area"],
             }
         )
     return rows

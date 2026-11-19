@@ -5,7 +5,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-PER_DAY = 90  # ingest.py BACKFILL_PER_RUN 과 같아야 한다
+PER_DAY = 120  # ingest.py BACKFILL_PER_RUN 과 같아야 한다
 SB_URL = "https://fpjgjwazqpfiffnsgume.supabase.co"
 SB_KEY = open(Path(__file__).with_name("ingest.py")).read().split('SB_KEY = "')[1].split('"')[0]
 
@@ -70,13 +70,19 @@ def sb_get(path, body=None):
 
 
 def history(data, now):
-    """거래 이력 적재 진행 상황: (가장 오래된 적재 월, 진행률 %). 실패하면 (None, None)."""
+    """거래 이력 적재 진행 상황: (가장 오래된 적재 월, 진행률 %, 남은 일수). 실패하면 None들."""
     try:
-        log = sb_get("apt_ingest_log?select=ym&limit=5000")
+        req = urllib.request.Request(
+            f"{SB_URL}/rest/v1/apt_ingest_log?select=ym&ver=gte.2&order=ym.asc&limit=1",
+            headers={"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}", "Prefer": "count=exact"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as r:
+            first = json.load(r)
+            done = int(r.headers.get("Content-Range", "*/0").split("/")[-1])
         ncodes = len({c for a in data["areas"] for c in a["codes"]})
         expected = ncodes * ((now.year - 2019) * 12 + now.month)
-        remain = max(0, expected - len(log))
-        return (min(x["ym"] for x in log) if log else None), min(100, round(len(log) * 100 / expected)), math.ceil(remain / PER_DAY)
+        remain = max(0, expected - done)
+        return (first[0]["ym"] if first else None), min(100, round(done * 100 / expected)), math.ceil(remain / PER_DAY)
     except Exception as e:
         print("적재 진행 조회 실패:", e, file=sys.stderr)
         return None, None, None
