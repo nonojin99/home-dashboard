@@ -393,6 +393,7 @@ try { saved = localStorage.getItem('area'); } catch (e) {}
 if (saved && DATA.areas.some((a) => a.key === saved)) sel.value = saved;
 sel.addEventListener('change', () => {
   try { localStorage.setItem('area', sel.value); } catch (e) {}
+  setAll(false);  // 지역을 직접 고르면 지도도 그 지역만 보여준다
   render(sel.value);
 });
 $('updated').textContent = DATA.updated;
