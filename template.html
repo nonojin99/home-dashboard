@@ -541,7 +541,16 @@ async function showInfo(c, zoneName) {
   const wrap = document.createElement('div');
   wrap.className = 'scroll';
   wrap.textContent = '거래 내역 불러오는 중…';
-  box.append(title, meta, stat, wrap);
+  const links = document.createElement('div');
+  links.style.margin = '4px 0';
+  const q = encodeURIComponent((c.dong ? c.dong + ' ' : '') + c.apt);
+  [['네이버부동산 매물', 'https://m.land.naver.com/search/result/' + q], ['호갱노노 매물', 'https://hogangnono.com/search?q=' + q]].forEach(([t, u], i) => {
+    const a = document.createElement('a');
+    a.href = u; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = t + ' ↗';
+    if (i) a.style.marginLeft = '12px';
+    links.appendChild(a);
+  });
+  box.append(title, meta, stat, links, wrap);
   try {
     const [lo, hi] = sizeRange();
     const res = await fetch(SB_URL + '/rest/v1/rpc/complex_trades', {
