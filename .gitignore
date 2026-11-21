@@ -2,3 +2,4 @@ site/
 __pycache__/
 data.json
 rates_cache.json
+alerts_seen.json

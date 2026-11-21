@@ -58,27 +58,31 @@ def build_mail(data, now):
             h.append(f"<p style='color:#d97706;font-size:12px'>거래 이력이 {since[:4]}-{since[4:]}부터만 쌓여 있어 신고가가 실제보다 낮을 수 있습니다. 매일 과거로 채우는 중입니다.</p>")
     else:
         h.append("<p style='color:#6e6e73'>조건에 맞는 단지가 없거나 조회에 실패했습니다.</p>")
+    fresh = sm.get("fresh") or []
+    h.append("<h3 style='margin:18px 0 4px'>이번 달 새로 신고된 싼 거래 (신고가보다 10% 이상 낮음)</h3>")
+    if fresh:
+        h.append("<table style='border-collapse:collapse;font-size:13px'><tr>" + "".join(
+            f"<th style='{th}color:#6e6e73'>{c}</th>" for c in ["단지", "동", "거래가", "신고가 대비", "거래일"]) + "</tr>")
+        for r in fresh:
+            h.append(f"<tr><td style='{td}text-align:left'>{html.escape(r['apt'])}</td><td style='{td}'>{html.escape(r['dong'])}</td>"
+                     f"<td style='{td}'>{r['price']/10000:.2f}억</td><td style='{td}color:#1a7f37;font-weight:600'>-{r['drop_pct']}%</td><td style='{td}'>{r['deal_date']}</td></tr>")
+        h.append("</table>")
+    else:
+        h.append("<p style='color:#6e6e73'>이번 달에는 조건에 맞는 거래가 없습니다.</p>")
     h.append(f"<p><a href='{SITE}'>대시보드 열기</a></p></div>")
     text = f"경기 남부 84㎡ 주간 요약 ({now:%Y-%m-%d})\n{sm['rateLine']}\n" + "\n".join(
         f"{r['name']}: {r['sale']}억 전월 {fmt(r['mom'])} 3개월 {fmt(r['m3'])} 거래 {r['trades']} → {r['signal']}" for r in rows) + f"\n{SITE}"
     return "".join(h), text
 
 
-def main():
-    now = datetime.now(KST)
-    event, msg = os.environ.get("EVENT_NAME", ""), os.environ.get("COMMIT_MSG", "")
-    if not (event == "workflow_dispatch" or "[mail]" in msg or (event == "schedule" and now.weekday() == 0)):
-        print("오늘은 메일을 보내지 않습니다.")
-        return 0
+def send(subject, text, body):
     user, pw, to = (os.environ.get(k, "") for k in ("MAIL_USER", "MAIL_APP_PASSWORD", "MAIL_TO"))
     if not (user and pw and to):
         print("MAIL_USER / MAIL_APP_PASSWORD / MAIL_TO 가 없어 건너뜁니다.")
         return 0
     rcpt = [x for x in to.replace(";", ",").replace(" ", ",").split(",") if x]
-    data = json.loads((Path(__file__).parent / "data.json").read_text(encoding="utf-8"))
-    body, text = build_mail(data, now)
     m = MIMEMultipart("alternative")
-    m["Subject"], m["From"], m["To"] = f"[부동산] 경기 남부 84㎡ 주간 요약 {now:%Y-%m-%d}", user, ", ".join(rcpt)
+    m["Subject"], m["From"], m["To"] = subject, user, ", ".join(rcpt)
     m.attach(MIMEText(text, "plain", "utf-8"))
     m.attach(MIMEText(body, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
@@ -88,6 +92,17 @@ def main():
         print(f"수신 거부됨: {addr[:3]}*** -> {err}", file=sys.stderr)
     print(f"메일 발송 요청: {len(rcpt)}명 중 서버 거부 {len(refused or {})}명")
     return 1 if refused else 0
+
+
+def main():
+    now = datetime.now(KST)
+    event, msg = os.environ.get("EVENT_NAME", ""), os.environ.get("COMMIT_MSG", "")
+    if not (event == "workflow_dispatch" or "[mail]" in msg or (event == "schedule" and now.weekday() == 0)):
+        print("오늘은 메일을 보내지 않습니다.")
+        return 0
+    data = json.loads((Path(__file__).parent / "data.json").read_text(encoding="utf-8"))
+    body, text = build_mail(data, now)
+    return send(f"[부동산] 경기 남부 84㎡ 주간 요약 {now:%Y-%m-%d}", text, body)
 
 
 if __name__ == "__main__":

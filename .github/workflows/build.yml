@@ -50,6 +50,19 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: python mail.py
+      - name: 알림 이력 캐시 (이미 알린 거래는 다시 보내지 않음)
+        uses: actions/cache@v4
+        with:
+          path: alerts_seen.json
+          key: alerts-${{ github.run_id }}
+          restore-keys: alerts-
+      - name: 새로 신고된 싼 거래 알림 (새 거래가 있을 때만 발송)
+        continue-on-error: true
+        env:
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python alerts.py
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
