@@ -634,16 +634,31 @@ const canonKey = (s) => { const k = nameKey(s); return ALIASES.get(k) || k; };
 
 // ---- 단지 목록 로더: 면적 범위별로 최근 24개월 거래가 있는 단지를 한 번만 받아 캐시 ----
 const CX_CACHE = new Map();
+// DB 응답 제한시간이 짧아(익명 3초) 처음 조회가 느리면 실패할 수 있다.
+// 무거운 조회는 한 번에 하나씩 보내고, 실패하면 잠시 뒤 다시 시도한다(두 번째부터는 DB가 데워져 빨라짐).
+let cxQueue = Promise.resolve();
+function cxSerial(fn) { const p = cxQueue.then(fn, fn); cxQueue = p.catch(() => {}); return p; }
+async function fetchComplexes(lo, hi) {
+  let last;
+  for (let i = 0; i < 4; i++) {
+    if (i) { mapMsg(`단지 목록을 다시 불러오는 중… (${i + 1}/4)`); await new Promise((r) => setTimeout(r, 1500 * i)); }
+    try {
+      const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
+        method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
+        body: JSON.stringify({p_sgg: CODE_ORDER, p_dongs: null, p_area_min: lo, p_area_max: hi, p_months: 24, p_limit: 2000}),
+      });
+      const data = await res.json();
+      if (res.ok) return data;
+      last = new Error((data && data.message) || res.status);
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
 function loadComplexes(lo, hi) {
   const key = lo + '-' + hi;
   if (CX_CACHE.has(key)) return CX_CACHE.get(key);
   const p = (async () => {
-    const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
-      method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
-      body: JSON.stringify({p_sgg: CODE_ORDER, p_dongs: null, p_area_min: lo, p_area_max: hi, p_months: 24, p_limit: 2000}),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error((data && data.message) || res.status);
+    const data = await cxSerial(() => fetchComplexes(lo, hi));
     data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); c.complex_key = buildingKey(c); c.nkey = nameKey(c.apt); });
     try {
       const br = await fetch(SB_URL + '/rest/v1/rpc/building_info_lookup', {
@@ -938,7 +953,7 @@ async function mapDraw(focus) {
 async function onChange(reload) {
   drawChips();
   saveFilters();
-  if (reload) { try { await mapLoad(); } catch (e) { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); $('mapCount').textContent = '불러오기 실패'; return; } }
+  if (reload) { try { await mapLoad(); } catch (e) { loadFailed(e); return; } }
   await mapDraw();
 }
 
@@ -975,7 +990,13 @@ restoreFilters();
 drawChips();
 filterSummary();
 // 목록은 지도와 상관없이 먼저 띄우고, 지도가 준비되면 핀을 그린다
-const firstLoad = Promise.resolve().then(mapLoad).then(() => mapDraw()).catch((e) => { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); $('mapCount').textContent = '불러오기 실패'; });
+function loadFailed(e) {
+  mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message);
+  $('mapCount').textContent = '불러오기 실패 · 여기를 눌러 다시 시도';
+  $('mapCount').style.cursor = 'pointer';
+  $('mapCount').onclick = () => { $('mapCount').onclick = null; $('mapCount').style.cursor = ''; mapState.loadKey = ''; onChange(true); };
+}
+const firstLoad = Promise.resolve().then(mapLoad).then(() => mapDraw()).catch(loadFailed);
 loadKakao().then(async () => {
   mapState.map = new kakao.maps.Map($('map'), {center: new kakao.maps.LatLng(37.2, 127.07), level: 7});
   mapMsg('');
@@ -1108,7 +1129,8 @@ async function buyMigrateLocal(rows) {
   }
 }
 // 매물 면적 ±3㎡ 범위의 단지 목록(최근 24개월)과 비교한다. 단지 찾기 화면의 필터와는 무관.
-const buyAreaRange = (x) => { const a = Math.round(Number(x.area) || 84); return [a - 3, a + 3]; };
+const AREA_PRESETS = [[83, 86], [55, 65], [72, 78], [95, 105]];
+const buyAreaRange = (x) => { const v = Number(x.area) || 84; const p = AREA_PRESETS.find(([lo, hi]) => v >= lo && v <= hi); if (p) return p; const a = Math.round(v); return [a - 3, a + 3]; };
 const buyDataFor = (x) => { const [lo, hi] = buyAreaRange(x); return BUY_CX.get(lo + '-' + hi) || null; };
 const BUY_CX = new Map();
 let buyLoading = false;

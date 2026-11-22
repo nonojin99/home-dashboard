@@ -76,8 +76,16 @@ def load_aliases():
 ALIASES = load_aliases()
 
 
+AREA_PRESETS = [(83, 86), (55, 65), (72, 78), (95, 105)]
+
+
 def area_range(x):
-    a = round(float(x.get("area") or 84))
+    """페이지와 같은 규칙: 면적이 기본 구간 안이면 그 구간, 아니면 ±3㎡."""
+    v = float(x.get("area") or 84)
+    for lo, hi in AREA_PRESETS:
+        if lo <= v <= hi:
+            return lo, hi
+    a = round(v)
     return a - 3, a + 3
 
 
