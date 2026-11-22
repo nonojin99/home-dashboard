@@ -340,6 +340,11 @@ def main() -> int:
     data = build(key, datetime.now(KST))
     now = datetime.now(KST)
     data["summary"] = summary.make(data, now)
+    try:  # 매물 사이트 단지명 → 실거래 단지명 (검색·관심 매물 매칭용)
+        data["aliases"] = json.loads((Path(__file__).parent / "aliases.json").read_text(encoding="utf-8")).get("aliases", {})
+    except Exception as e:
+        print(f"aliases.json 읽기 실패: {e}")
+        data["aliases"] = {}
     render(data, here / "template.html", here / "site" / "index.html")
     (here / "data.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")  # 메일 요약용 (배포 안 함)
     print("site/index.html 생성 완료")

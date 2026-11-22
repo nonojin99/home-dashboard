@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import html
+import re
 import json
 import os
 import sys
@@ -55,12 +56,39 @@ def attach_buildings(complexes):
     return complexes
 
 
+def name_key(s):
+    """페이지의 nameKey()와 같은 규칙: 띄어쓰기·기호·'아파트' 꼬리말·숫자 없는 괄호 무시."""
+    s = re.sub(r"\([^)]*\)|\[[^\]]*\]", lambda m: m.group(0) if re.search(r"\d", m.group(0)) else "", str(s or "").lower())
+    s = re.sub(r"아파트$", "", s)
+    s = re.sub(r"[\s·.,\-_()\[\]]", "", s)
+    return re.sub(r"아파트$", "", s)
+
+
+def load_aliases():
+    try:
+        raw = json.loads((Path(__file__).parent / "aliases.json").read_text(encoding="utf-8")).get("aliases", {})
+        return {name_key(a): name_key(b) for a, b in raw.items()}
+    except Exception as e:
+        print(f"aliases.json 읽기 실패: {e}", file=sys.stderr)
+        return {}
+
+
+ALIASES = load_aliases()
+
+
+def area_range(x):
+    a = round(float(x.get("area") or 84))
+    return a - 3, a + 3
+
+
 def evaluate(x, complexes):
-    apt = (x.get("apt") or "").strip().lower()
+    k = name_key(x.get("apt"))
+    k = ALIASES.get(k, k)
     dong = (x.get("dong") or "").strip()
-    rows = [c for c in complexes if (c.get("apt") or "").strip().lower() == apt and (not dong or c.get("dong") == dong)]
-    if not rows:
-        rows = [c for c in complexes if apt and (apt in (c.get("apt") or "").lower() or (c.get("apt") or "").lower() in apt)]
+    keyed = [(name_key(c.get("apt")), c) for c in complexes]
+    rows = [c for ck, c in keyed if ck == k and (not dong or c.get("dong") == dong)] or [c for ck, c in keyed if ck == k]
+    if not rows and len(k) >= 3:
+        rows = [c for ck, c in keyed if (k in ck or ck in k) and (not dong or c.get("dong") == dong)]
     p = int(x.get("price") or 0)
     c = min(rows, key=lambda z: abs((z.get("last_price") or 0) - p)) if rows else None
     fair_gap = gap(p, c.get("med6")) if c else None
@@ -76,7 +104,9 @@ def evaluate(x, complexes):
     price_score = max(0, min(100, round(price_score)))
     building_score = int(c.get('building_score')) if c and c.get('building_score') is not None else None
     score = price_score if building_score is None else round(price_score * 0.70 + building_score * 0.30)
-    label = "강한 후보" if score >= 80 else "매수 검토" if score >= 65 else "관찰" if score >= 50 else "비쌈"
+    floor = x.get("floor")
+    low_floor = (floor is not None and str(floor) != "" and int(floor) <= 3) or "저층" in (x.get("memo") or "")
+    label = ("강한 후보" if score >= 80 else "매수 검토" if score >= 65 else "관찰" if score >= 50 else "비쌈") + (" · 저층" if low_floor else "")
     hist = x.get("history") or []
     first = int(hist[0].get("price") or p) if hist else p
     cut = gap(p, first)
@@ -92,15 +122,21 @@ def main():
     try:
         listings = rpc("buyer_listings_list", {"p_pin": pin}) or []
         codes = sorted({c for a in build.AREAS for c in build.as_codes(a[2])})
-        complexes = rpc("map_complexes", {"p_sgg": codes, "p_dongs": None, "p_area_min": 83, "p_area_max": 86,
-                                           "p_months": 6, "p_limit": 4000}) or []
-        complexes = attach_buildings(complexes)
+        by_range = {}  # 매물 면적 ±3㎡ · 최근 24개월 (페이지와 같은 기준)
+        for x in listings:
+            r = area_range(x)
+            if r not in by_range:
+                by_range[r] = attach_buildings(rpc("map_complexes", {"p_sgg": codes, "p_dongs": None, "p_area_min": r[0], "p_area_max": r[1],
+                                                                     "p_months": 24, "p_limit": 2000}) or [])
     except Exception as e:
         print(f"관심 매물 조회 실패: {e}", file=sys.stderr)
         return 1
 
-    rows = [evaluate(x, complexes) for x in listings]
+    rows = [evaluate(x, by_range[area_range(x)]) for x in listings]
     # 의미 있는 후보만: 매수 검토 이상 또는 최초가 대비 2%+ 인하
+    for r in rows:
+        if r["complex"] is None:
+            print(f"관심 매물 단지 매칭 실패: {r['listing'].get('apt')} — aliases.json에 실거래 단지명을 추가하세요")
     rows = [r for r in rows if r["score"] >= 65 or (r["cut"] is not None and r["cut"] <= -2)]
     rows.sort(key=lambda r: (r["score"], -(r["fair_gap"] or 999)), reverse=True)
     seen = set(json.loads(SEEN.read_text(encoding="utf-8"))) if SEEN.exists() else set()

@@ -83,6 +83,14 @@ main{padding-bottom:80px}
 .sbtn{font:inherit;font-size:15px;width:100%;padding:11px;border:0;border-radius:10px;background:var(--a);color:#fff;cursor:pointer}
 td.dn{color:var(--down);font-weight:600}
 .sf label:first-child{grid-column:1/-1}
+.sug-wrap{position:relative}
+.sug{position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-height:320px;overflow:auto}
+.sug[hidden]{display:none}
+.sug button{display:block;width:100%;text-align:left;font:inherit;font-size:14px;padding:9px 12px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.sug button:last-child{border-bottom:0}
+.sug button.on,.sug button:hover{background:var(--line)}
+.sug small{color:var(--muted);margin-left:6px}
+.match-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .tabs{display:flex;gap:6px}
 .tab{font:inherit;font-size:14px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer}
 .tab.on{background:var(--a);border-color:var(--a);color:#fff}
@@ -140,7 +148,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <div class="muted">지역 (여러 개 선택 가능 · 아무것도 안 고르면 전체)</div>
     <div class="chips" id="mChips"></div>
     <div class="sf">
-      <label>단지 검색 (자동 완성 · 엔터로 이동)<input id="mapQ" list="mapList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="mapList"></datalist></label>
+      <label class="sug-wrap">단지 검색 (이름 일부·동 이름·띄어쓰기 무관)<input id="mapQ" placeholder="예: 아이파크, 포레너스, 영천동, 예당마을" autocomplete="off"><div class="sug" id="mapSug" hidden></div></label>
     </div>
     <details id="mapFilters"><summary>조건 필터 <span class="muted" id="mFiltSum"></span></summary>
     <div class="sf" style="margin-top:8px">
@@ -189,7 +197,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <form id="buyForm">
       <input id="buyId" type="hidden">
       <div class="buy-grid">
-        <label class="wide">단지명<input id="buyApt" list="mapList" required placeholder="예: 동탄역 시범한화 꿈에그린 프레스티지"></label>
+        <label class="wide sug-wrap">단지명<input id="buyApt" required autocomplete="off" placeholder="예: 동탄역 시범한화 꿈에그린 프레스티지"><div class="sug" id="buyAptSug" hidden></div></label>
         <label>법정동<input id="buyDong" placeholder="예: 청계동"></label>
         <label>호가 (억)<input id="buyPrice" type="number" step="0.01" min="0" required placeholder="예: 8.20"></label>
         <label>전용면적 (㎡)<input id="buyArea" type="number" step="0.01" value="84" placeholder="84"></label>
@@ -197,6 +205,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
         <label class="wide">매물 링크<input id="buyUrl" type="url" placeholder="https://..."></label>
         <label class="wide">메모<textarea id="buyMemo" placeholder="동향, 수리 상태, 중개사 설명, 협상 가능 금액 등"></textarea></label>
       </div>
+      <div class="buy-note" id="buyMatchHint"></div>
       <div class="buy-actions"><button class="primary" type="submit" id="buySave">매물 저장</button><button type="button" id="buyCancel" hidden>수정 취소</button><button type="button" id="buyExport">백업 JSON</button><label class="mini-btn" style="display:inline-flex;align-items:center">백업 불러오기<input id="buyImport" type="file" accept="application/json" hidden></label></div>
       <div class="buy-note">종합 매수점수는 가격점수 70% + 건물품질 30%로 계산합니다. 건축물대장이 아직 수집되지 않은 단지는 가격점수만 표시합니다. 실제 매수 결정 전에는 동·층·향·수리비·권리관계를 별도로 확인하세요.</div>
     </form>
@@ -549,8 +558,11 @@ function matchQ(c, q) {
   if (/예당/.test(s)) {
     if (c.dong !== '석우동') return false;
     s = s.replace(/동탄|예당마을|예당/g, '').trim();
+    if (!s) return true;
   }
-  return !s || c.apt.toLowerCase().includes(s);
+  const qk = nameKey(s), k = c.nkey || nameKey(c.apt);
+  if (k.includes(qk) || nameKey(c.dong).startsWith(qk)) return true;
+  return [...ALIASES].some(([a, b]) => a.includes(qk) && (k === b || k.includes(b)));
 }
 
 
@@ -600,35 +612,115 @@ function buildingText(b) {
   return bits.join(' · ') || '건축물대장 자료 일부 없음';
 }
 
+// ---- 단지명 정규화·별칭 ----
+// 띄어쓰기·괄호·'아파트' 꼬리말 차이를 무시하고 비교한다. 이름이 바뀐 단지는 aliases.json(공용) + 이 브라우저에서 직접 연결한 것(개인)으로 맞춘다.
+function nameKey(s) {
+  return String(s || '').toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g, (m) => /\d/.test(m) ? m : '').replace(/아파트$/, '').replace(/[\s·.,\-_()\[\]]/g, '').replace(/아파트$/, '');
+}
+const ALIAS_LS = 'aptAliasesV1';
+function aliasMap() {
+  const m = new Map();
+  Object.entries(DATA.aliases || {}).forEach(([a, b]) => m.set(nameKey(a), nameKey(b)));
+  try { Object.entries(JSON.parse(localStorage.getItem(ALIAS_LS) || '{}')).forEach(([a, b]) => m.set(nameKey(a), nameKey(b))); } catch (e) {}
+  return m;
+}
+let ALIASES = aliasMap();
+function addAlias(from, to) {
+  if (!from || nameKey(from) === nameKey(to)) return;
+  try { const o = JSON.parse(localStorage.getItem(ALIAS_LS) || '{}'); o[from] = to; localStorage.setItem(ALIAS_LS, JSON.stringify(o)); } catch (e) {}
+  ALIASES = aliasMap();
+}
+const canonKey = (s) => { const k = nameKey(s); return ALIASES.get(k) || k; };
+
+// ---- 단지 목록 로더: 면적 범위별로 최근 24개월 거래가 있는 단지를 한 번만 받아 캐시 ----
+const CX_CACHE = new Map();
+function loadComplexes(lo, hi) {
+  const key = lo + '-' + hi;
+  if (CX_CACHE.has(key)) return CX_CACHE.get(key);
+  const p = (async () => {
+    const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
+      method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
+      body: JSON.stringify({p_sgg: CODE_ORDER, p_dongs: null, p_area_min: lo, p_area_max: hi, p_months: 24, p_limit: 2000}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error((data && data.message) || res.status);
+    data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); c.complex_key = buildingKey(c); c.nkey = nameKey(c.apt); });
+    try {
+      const br = await fetch(SB_URL + '/rest/v1/rpc/building_info_lookup', {
+        method:'POST', headers:{apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'Content-Type':'application/json'},
+        body:JSON.stringify({p_keys:data.map(c=>c.complex_key)}),
+      });
+      if (br.ok) {
+        const rows = await br.json(), by = new Map(rows.map(x=>[x.complex_key,x]));
+        data.forEach(c => { c.building = by.get(c.complex_key) || null; c.building_score = c.building && c.building.quality_score != null ? Number(c.building.quality_score) : null; });
+      }
+    } catch(e) { console.warn('건축물대장 조회 실패', e); }
+    return data;
+  })();
+  p.catch(() => CX_CACHE.delete(key));
+  CX_CACHE.set(key, p);
+  return p;
+}
+
+// 검색: 이름 일부(띄어쓰기 무관)·별칭·동 이름. 이름이 앞에서 맞는 단지를 먼저.
+function searchComplexes(data, q, limit) {
+  const qk = nameKey(q);
+  if (!qk) return [];
+  const alts = [...ALIASES].filter(([a]) => a.includes(qk)).map(([, b]) => b);
+  const seen = new Set(), out = [];
+  data.forEach((c) => {
+    const k = c.nkey || nameKey(c.apt);
+    let r = -1;
+    if (k.startsWith(qk)) r = 0;
+    else if (k.includes(qk)) r = 1;
+    else if (alts.some((b) => k === b || k.includes(b))) r = 1;
+    else if (nameKey(c.dong).startsWith(qk)) r = 2;
+    if (r < 0) return;
+    const id = c.sgg_cd + c.dong + c.jibun + c.apt;
+    if (seen.has(id)) return;
+    seen.add(id); out.push([r, c]);
+  });
+  out.sort((a, b) => a[0] - b[0] || a[1].apt.localeCompare(b[1].apt, 'ko'));
+  return out.slice(0, limit || 50).map((x) => x[1]);
+}
+
+// 자동완성 상자: 휴대폰 브라우저의 datalist는 앞글자 일치만 보여줘서 직접 만든다
+function attachSuggest(input, box, getData, onPick) {
+  let items = [], idx = -1;
+  const close = () => { box.hidden = true; idx = -1; };
+  const draw = () => {
+    box.replaceChildren();
+    items.forEach((c, i) => {
+      const b = document.createElement('button'); b.type = 'button'; if (i === idx) b.className = 'on';
+      b.textContent = c.apt;
+      const sm = document.createElement('small'); sm.textContent = c.dong + ' · ' + c.region + ' · ' + fmtEok(c.last_price); b.appendChild(sm);
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => { close(); onPick(c); });
+      box.appendChild(b);
+    });
+    box.hidden = !items.length;
+  };
+  input.addEventListener('input', () => { items = searchComplexes(getData(), input.value, 8); idx = -1; draw(); });
+  input.addEventListener('focus', () => { if (input.value.trim()) { items = searchComplexes(getData(), input.value, 8); draw(); } });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+  input.addEventListener('keydown', (e) => {
+    if (box.hidden) return;
+    if (e.key === 'ArrowDown') { idx = Math.min(items.length - 1, idx + 1); draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { idx = Math.max(0, idx - 1); draw(); e.preventDefault(); }
+    else if (e.key === 'Enter' && idx >= 0) { e.preventDefault(); e.stopImmediatePropagation(); const c = items[idx]; close(); onPick(c); }
+    else if (e.key === 'Escape') close();
+  });
+}
+
 async function mapLoad() {
-  const [lo, hi] = sizeRange(), months = +$('mMonths').value;
-  const key = JSON.stringify([lo, hi, months]);
+  const [lo, hi] = sizeRange();
+  const key = JSON.stringify([lo, hi]);
   if (key === mapState.loadKey) return;
   mapMsg('단지 목록을 불러오는 중…');
   $('mapCount').textContent = '불러오는 중…';
-  const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
-    method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
-    body: JSON.stringify({p_sgg: CODE_ORDER, p_dongs: null, p_area_min: lo, p_area_max: hi, p_months: months, p_limit: 2000}),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error((data && data.message) || res.status);
-  data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); c.complex_key = buildingKey(c); });
-  try {
-    const br = await fetch(SB_URL + '/rest/v1/rpc/building_info_lookup', {
-      method:'POST', headers:{apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'Content-Type':'application/json'},
-      body:JSON.stringify({p_keys:data.map(c=>c.complex_key)}),
-    });
-    if (br.ok) {
-      const rows = await br.json(), by = new Map(rows.map(x=>[x.complex_key,x]));
-      data.forEach(c => { c.building = by.get(c.complex_key) || null; c.building_score = c.building && c.building.quality_score != null ? Number(c.building.quality_score) : null; });
-    }
-  } catch(e) { console.warn('건축물대장 조회 실패', e); }
-  mapState.data = data;
+  mapState.data = await loadComplexes(lo, hi);
   mapState.loadKey = key;
   if (typeof buyRender === 'function') buyRender();
-  const dl = $('mapList');
-  dl.replaceChildren();
-  [...new Set(data.map((c) => c.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
 }
 
 function inRegion(c) {
@@ -637,8 +729,11 @@ function inRegion(c) {
 
 function mapFiltered(ignoreRegion) {
   const pmin = numVal('mMin'), pmax = numVal('mMax'), built = numVal('mBuilt'), reco = $('mReco').value;
+  const cut = new Date(); cut.setMonth(cut.getMonth() - +$('mMonths').value);
+  const cutStr = cut.toISOString().slice(0, 10);
   return mapState.data.filter((c) => {
     if (!ignoreRegion && !inRegion(c)) return false;
+    if (!mapState.q && String(c.last_date) < cutStr) return false;  // 검색할 때는 거래 시점과 상관없이 찾는다
     const p = c.last_price / 10000;
     if (pmin != null && p < pmin) return false;
     if (pmax != null && p > pmax) return false;
@@ -847,7 +942,8 @@ async function onChange(reload) {
   await mapDraw();
 }
 
-['mSize', 'mMonths'].forEach((id) => $(id).addEventListener('change', () => onChange(true)));
+$('mSize').addEventListener('change', () => onChange(true));
+$('mMonths').addEventListener('change', () => onChange());
 ['mReco', 'mColor'].forEach((id) => $(id).addEventListener('change', () => onChange()));
 let mapTimer = null;
 ['mMin', 'mMax', 'mBuilt'].forEach((id) => $(id).addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => onChange(), 400); }));
@@ -857,6 +953,13 @@ async function runSearch(focus) {
   if (mapState.q && mapState.regions.size && !mapFiltered().length && mapFiltered(true).length) { mapState.regions.clear(); drawChips(); saveFilters(); }
   await mapDraw(focus);
 }
+attachSuggest($('mapQ'), $('mapSug'), () => mapState.data, (c) => {
+  $('mapQ').value = c.apt;
+  mapState.q = c.apt;
+  if (mapState.regions.size && !inRegion(c)) { mapState.regions.clear(); drawChips(); saveFilters(); }
+  mapDraw().then(() => focusComplex(c));
+  focusComplex(c);
+});
 $('mapQ').addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => runSearch(false), 450); });
 $('mapQ').addEventListener('change', () => runSearch(true));
 $('mapQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(mapTimer); runSearch(true); } });
@@ -882,11 +985,12 @@ loadKakao().then(async () => {
 
 // ---- 빠른 매물 입력: 공유텍스트/링크 로컬 파싱 (무료) ----
 function quickPriceToEok(text){
-  text=(text||'').replace(/\u00a0/g,' ');
-  let m=text.match(/(?:매매|호가|가격)?\s*(\d{1,2})\s*억(?:\s*(\d{1,4}(?:,\d{3})?))?/);
-  if(m){const man=m[2]?Number(m[2].replace(/,/g,'')):0;return Number(m[1])+man/10000;}
-  m=text.match(/(\d+(?:\.\d+)?)\s*억/); if(m)return Number(m[1]);
-  m=text.match(/(?:매매|호가|가격)\s*([1-9]\d{4,5})\s*만?원?/); if(m)return Number(m[1])/10000;
+  text=(text||'').replace(/ /g,' ');
+  // 8억 2,000 / 8억2천 / 8억 2천만원 / 8.2억
+  let m=text.match(/(\d{1,2}(?:\.\d+)?)\s*억(?:\s*(\d{1,4}(?:,\d{3})?)(?![\d,.])(?!\s*(?:㎡|m²|m2|층|평|\/))\s*(천)?\s*(?:만\s*원?|만)?)?/);
+  if(m){let man=m[2]?Number(m[2].replace(/,/g,'')):0; if(m[3])man*=1000; return Math.round((Number(m[1])+man/10000)*10000)/10000;}
+  m=text.match(/(?:매매|호가|가격)?\s*(\d{1,3}(?:,\d{3})+|[1-9]\d{4,5})\s*만\s*원?/); if(m)return Number(m[1].replace(/,/g,''))/10000;
+  m=text.match(/(?:매매|호가|가격)\s*([1-9]\d{4,5})(?!\d)/); if(m)return Number(m[1])/10000;
   return null;
 }
 function quickSource(url){
@@ -910,11 +1014,19 @@ function parseListingText(raw){
   const url=(text.match(/https?:\/\/[^\s<>'"]+/)||[])[0]||'';
   const price=quickPriceToEok(text);
   let area=null,floor=null,dong='';
-  let m=text.match(/(?:전용(?:면적)?|전용률)?\s*(\d{2,3}(?:\.\d+)?)\s*(?:㎡|m²|m2)/i); if(m)area=Number(m[1]);
-  if(area==null){m=text.match(/(?:전용|공급)\s*(\d{2,3}(?:\.\d+)?)\s*\/\s*(\d{2,3}(?:\.\d+)?)\s*㎡?/i);if(m)area=Number(m[1]);}
+  let m;
+  // 전용면적: '전용 84' 우선, 'a/b㎡'(네이버는 공급/전용 순서)는 작은 값, 그 외 ㎡ 숫자 중 가장 작은 값
+  m=text.match(/전용(?:면적)?\s*[:：]?\s*(\d{2,3}(?:\.\d+)?)/); if(m)area=Number(m[1]);
+  if(area==null){m=text.match(/(\d{2,3}(?:\.\d+)?)[A-Z]?\s*\/\s*(\d{2,3}(?:\.\d+)?)[A-Z]?\s*(?:㎡|m²|m2)/i);if(m)area=Math.min(Number(m[1]),Number(m[2]));}
+  if(area==null){const all=[...text.matchAll(/(\d{2,3}(?:\.\d+)?)\s*(?:㎡|m²|m2)/gi)].map(x=>Number(x[1])).filter(v=>v>=20&&v<=250);if(all.length)area=Math.min(...all);}
   m=text.match(/(?:^|\s)(\d{1,2})\s*층(?:\s*\/\s*\d+\s*층)?/m); if(m)floor=Number(m[1]);
   if(floor==null){m=text.match(/(?:^|\s)(\d{1,2})\s*\/\s*\d{1,2}\s*층/m);if(m)floor=Number(m[1]);}
-  m=text.match(/([가-힣]{1,12}동)(?:\s|,|$)/); if(m)dong=m[1];
+  let floorBand=''; if(floor==null){m=text.match(/(저|중|고)\s*층?\s*\/\s*\d{1,2}\s*층/)||text.match(/(?:^|\s)(저|중|고)층/m);if(m)floorBand=m[1]+'층';}
+  // 법정동: 실거래 DB에 있는 동 이름을 우선. 없으면 중개사무소 줄은 빼고 'OO동' 단어를 찾는다
+  const known=new Set([...(mapState.data||[]).map(c=>c.dong),...DATA.areas.flatMap(a=>a.dongs||[])]);
+  const words=text.replace(/https?:\/\/\S+/g,'').match(/[가-힣]{1,10}동(?![가-힣])/g)||[];
+  dong=words.find(w=>known.has(w))||'';
+  if(!dong){for(const ln of lines){if(/중개|부동산|공인|사무소|대표/.test(ln))continue;const w=ln.match(/([가-힣]{1,10}동)(?![가-힣])/);if(w&&!/^(남|북|남동|남서|북동|북서)동$/.test(w[1])){dong=w[1];break;}}}
   const reject=/^(https?:|매매|전세|월세|호가|가격|전용|공급|층|방향|확인매물|중개|매물번호|등록)/i;
   let apt='';
   for(const ln of lines){
@@ -923,9 +1035,9 @@ function parseListingText(raw){
       apt=clean.replace(/[|·].*$/,'').trim(); break;
     }
   }
-  let direction=''; m=text.match(/(?:방향|향)\s*[:：]?\s*(남동|남서|북동|북서|남|북|동|서)향?/); if(m)direction=m[1]+'향';
+  let direction=''; m=text.match(/(?:방향|향)\s*[:：]?\s*(남동|남서|북동|북서|남|북|동|서)향?/)||text.match(/(?:^|[\s,/·|])(남동|남서|북동|북서|남|북|동|서)향/m); if(m)direction=m[1]+'향';
   let building=''; m=text.match(/(?:^|\s)(\d{3,4})동(?:\s|,|$)/m); if(m)building=m[1]+'동';
-  return {apt,dong,price,area,floor,url,source:quickSource(url),source_id:quickSourceId(url),direction,building,raw:text};
+  return {apt,dong,price,area,floor,floorBand,url,source:quickSource(url),source_id:quickSourceId(url),direction,building,raw:text};
 }
 function applyQuickListing(x){
   if(x.apt)$('buyApt').value=x.apt;
@@ -934,15 +1046,15 @@ function applyQuickListing(x){
   if(x.area)$('buyArea').value=Number(x.area).toFixed(2).replace(/\.00$/,'');
   if(x.floor!=null&&x.floor!=='')$('buyFloor').value=x.floor;
   if(x.url)$('buyUrl').value=x.url;
-  const extras=[]; if(x.direction)extras.push('향: '+x.direction); if(x.building)extras.push('동: '+x.building);
-  if(extras.length){const old=$('buyMemo').value.trim();$('buyMemo').value=[old,...extras].filter(Boolean).join(old?'\n':'');}
+  const extras=[]; if(x.floorBand)extras.push('층: '+x.floorBand); if(x.direction)extras.push('향: '+x.direction); if(x.building)extras.push('동: '+x.building);
+  if(extras.length){const old=$('buyMemo').value.trim();$('buyMemo').value=[old,...extras].filter(Boolean).join('\n');}
   $('buyForm').dataset.source=x.source||'manual'; $('buyForm').dataset.sourceId=x.source_id||'';
-  const fields=[x.apt&&'단지',x.price&&'가격',x.area&&'면적',x.floor!=null&&'층',x.direction&&'향',x.url&&'링크'].filter(Boolean);
+  const fields=[x.apt&&'단지',x.dong&&'동',x.price&&'가격',x.area&&'면적',(x.floor!=null||x.floorBand)&&'층',x.direction&&'향',x.url&&'링크'].filter(Boolean);
   $('buyQuickPreview').classList.add('on');
   $('buyQuickPreview').textContent=(fields.length?fields.join(' · ')+' 자동 입력':'자동 입력할 값을 충분히 찾지 못함')+'했습니다. 저장 전 확인하세요.';
 }
 $('buyQuickParse').addEventListener('click',()=>{
-  const x=parseListingText($('buyQuickText').value); applyQuickListing(x);
+  const x=parseListingText($('buyQuickText').value); applyQuickListing(x); buyMatchHint();
   $('buyQuickStatus').textContent=x.url?(x.source==='manual'?'일반 링크로 인식했습니다. 자동으로 읽은 값만 확인해 주세요.':'출처: '+x.source+' · 링크 식별값도 함께 저장합니다.'):'링크 없이 공유 텍스트만 분석했습니다.';
 });
 $('buyQuickClear').addEventListener('click',()=>{
@@ -995,11 +1107,33 @@ async function buyMigrateLocal(rows) {
     if(Number(x.price)!==Number(hist[hist.length-1].price)) await buyCloudUpsert(x);
   }
 }
+// 매물 면적 ±3㎡ 범위의 단지 목록(최근 24개월)과 비교한다. 단지 찾기 화면의 필터와는 무관.
+const buyAreaRange = (x) => { const a = Math.round(Number(x.area) || 84); return [a - 3, a + 3]; };
+const buyDataFor = (x) => { const [lo, hi] = buyAreaRange(x); return BUY_CX.get(lo + '-' + hi) || null; };
+const BUY_CX = new Map();
+let buyLoading = false;
+async function buyEnsureData(extra) {
+  const need = new Map();
+  [...buyListings, ...(extra ? [extra] : [])].forEach((x) => { const r = buyAreaRange(x); const k = r.join('-'); if (!BUY_CX.has(k)) need.set(k, r); });
+  if (!need.size || buyLoading) return;
+  buyLoading = true;
+  try {
+    for (const [k, [lo, hi]] of need) { try { BUY_CX.set(k, await loadComplexes(lo, hi)); } catch (e) { console.warn('관심 매물 비교 단지 로드 실패', e); } }
+  } finally { buyLoading = false; }
+  buyRender(); buyMatchHint();
+}
+function findComplex(data, apt, dong, price) {
+  if (!data || !apt) return null;
+  const k = canonKey(apt);
+  let rows = data.filter((c) => c.nkey === k && (!dong || c.dong === dong));
+  if (!rows.length) rows = data.filter((c) => c.nkey === k);
+  if (!rows.length && k.length >= 3) rows = data.filter((c) => (c.nkey.includes(k) || k.includes(c.nkey)) && (!dong || c.dong === dong));
+  return rows.sort((a, b) => Math.abs((a.last_price || 0) - price) - Math.abs((b.last_price || 0) - price))[0] || null;
+}
 function buyComplex(x) {
-  const apt = (x.apt || '').trim().toLowerCase(), dong = (x.dong || '').trim();
-  let rows = mapState.data.filter((c) => c.apt.toLowerCase() === apt && (!dong || c.dong === dong));
-  if (!rows.length) rows = mapState.data.filter((c) => c.apt.toLowerCase().includes(apt) || apt.includes(c.apt.toLowerCase()));
-  return rows.sort((a,b) => Math.abs((a.last_price||0) - x.price) - Math.abs((b.last_price||0) - x.price))[0] || null;
+  const data = buyDataFor(x);
+  if (!data) { buyEnsureData(); return null; }
+  return findComplex(data, x.apt, (x.dong || '').trim(), Number(x.price) || 0);
 }
 const pctGap = (a, b) => (!a || !b ? null : Math.round((a / b - 1) * 1000) / 10);
 function buyEval(x) {
@@ -1014,13 +1148,14 @@ function buyEval(x) {
   priceScore = Math.max(0, Math.min(100, Math.round(priceScore)));
   const buildingScore = c && c.building_score != null ? Number(c.building_score) : null;
   const score = buildingScore == null ? priceScore : Math.round(priceScore * .70 + buildingScore * .30);
-  const label = score >= 80 ? '강한 후보' : score >= 65 ? '매수 검토' : score >= 50 ? '관찰' : '비쌈';
-  return {c, fairGap, lastGap, highGap, priceScore, buildingScore, score, label};
+  const lowFloor = (x.floor != null && x.floor !== '' && Number(x.floor) <= 3) || /저층/.test(x.memo || '');
+  const label = (score >= 80 ? '강한 후보' : score >= 65 ? '매수 검토' : score >= 50 ? '관찰' : '비쌈') + (lowFloor ? ' · 저층' : '');
+  return {c, fairGap, lastGap, highGap, priceScore, buildingScore, score, label, lowFloor};
 }
 function buyReset() {
   ['buyId','buyApt','buyDong','buyPrice','buyFloor','buyUrl','buyMemo'].forEach((id) => { $(id).value = ''; });
   $('buyArea').value = '84'; $('buyCancel').hidden = true; $('buySave').textContent = '매물 저장';
-  $('buyForm').dataset.source='manual'; $('buyForm').dataset.sourceId='';
+  $('buyForm').dataset.source='manual'; $('buyForm').dataset.sourceId=''; $('buyMatchHint').replaceChildren();
 }
 function prefillListing(c) {
   document.querySelectorAll('.tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'Buy'));
@@ -1035,6 +1170,7 @@ function buyReason(x,e){
   if(e.fairGap!=null) bits.push(`기대가 대비 ${sgn1(e.fairGap)}`);
   if(e.lastGap!=null) bits.push(`최근 실거래 대비 ${sgn1(e.lastGap)}`);
   if(e.buildingScore!=null) bits.push(`건물 ${e.buildingScore}점`);
+  if(e.lowFloor) bits.push('저층이라 원래 시세보다 낮게 거래되는 편 — 싸 보이는 정도를 감안');
   const hist=x.history||[], first=hist.length?Number(hist[0].price):Number(x.price), cut=pctGap(x.price,first);
   if(cut!=null&&cut<0) bits.push(`최초가 대비 ${sgn1(cut)}`);
   return bits.join(' · ') || '비교 데이터 수집 중';
@@ -1078,7 +1214,7 @@ function buyRender() {
     const strong = document.createElement('strong'); strong.textContent = x.apt + (x.dong ? ' · ' + x.dong : ''); name.appendChild(strong);
     if (x.memo) { const m=document.createElement('div'); m.className='hist'; m.textContent=x.memo; name.appendChild(m); }
     if (x.url) { const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='매물 링크 ↗'; a.style.display='block'; name.appendChild(a); }
-    td((x.price/10000).toFixed(2)+'억'); td(e.c ? fmtEok(e.c.last_price) : '단지 매칭 안됨'); td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
+    td((x.price/10000).toFixed(2)+'억'); const lc=td(e.c ? fmtEok(e.c.last_price) : (buyDataFor(x) ? '단지 매칭 안됨 · 눌러서 연결' : '불러오는 중'), e.c ? '' : 'sg warn'); if(!e.c){lc.style.cursor='pointer';lc.addEventListener('click',()=>buyEdit(x.id));} td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
     td(e.fairGap==null?'—':sgn1(e.fairGap), e.fairGap!=null&&e.fairGap<=-5?'sg good':e.fairGap!=null&&e.fairGap>=5?'sg warn':'');
     td(e.highGap==null?'—':sgn1(e.highGap), (e.highGap!=null&&e.highGap<=-10?'sg good ':'')+'buy-table-hide-mobile');
     const hc=td(chg==null?'—':sgn1(chg), chg<0?'sg good':chg>0?'sg warn':'');
@@ -1097,9 +1233,47 @@ function buyRender() {
   $('buyHeroReason').textContent = best ? `호가 ${(best.x.price/10000).toFixed(2)}억 · ${buyReason(best.x,best.eval)}` : '실거래·6개월 기대가·신고가·건물품질을 함께 비교해 가장 유리한 후보를 먼저 보여줍니다.';
   $('buyEmpty').hidden = !!buyListings.length;
 }
+// 단지명이 실거래 DB와 안 맞을 때: 같은 동(또는 이름이 비슷한) 단지를 보여주고 고르면 이 브라우저에 별칭으로 기억한다
+function buyMatchHint() {
+  const box = $('buyMatchHint'); if (!box) return;
+  box.replaceChildren();
+  const apt = $('buyApt').value.trim(); if (!apt) return;
+  const x = {apt, dong: $('buyDong').value.trim(), area: $('buyArea').value, price: Math.round((Number($('buyPrice').value) || 0) * 10000)};
+  const data = buyDataFor(x);
+  if (!data) { box.textContent = '실거래 단지와 맞춰 보는 중…'; buyEnsureData(x); return; }
+  const c = findComplex(data, x.apt, x.dong, x.price);
+  if (c) { box.textContent = `실거래 단지 연결됨: ${c.apt} · ${c.dong} (최근 ${fmtEok(c.last_price)})`; return; }
+  let cands = x.dong ? data.filter((d) => d.dong === x.dong) : [];
+  if (!cands.length) { const k = nameKey(apt); cands = data.filter((d) => [...new Set(k)].filter((ch) => d.nkey.includes(ch)).length >= Math.min(4, k.length)); }
+  cands = cands.sort((a, b) => Math.abs((a.last_price || 0) - x.price) - Math.abs((b.last_price || 0) - x.price)).slice(0, 12);
+  box.append(`'${apt}'은(는) 실거래 DB에 없는 이름입니다. 단지명이 바뀌었거나 사이트마다 다르게 부르는 경우가 많습니다. ${cands.length ? '아래에서 같은 단지를 고르면 연결됩니다 (가격이 가까운 순).' : '단지명 칸에 실거래 이름 일부를 입력해 고르세요.'}`);
+  const wrap = document.createElement('div'); wrap.className = 'match-chips';
+  cands.forEach((d) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'mini-btn';
+    b.textContent = `${d.apt} · ${d.dong} · ${fmtEok(d.last_price)}`;
+    b.addEventListener('click', () => pickBuyComplex(d, apt));
+    wrap.appendChild(b);
+  });
+  box.appendChild(wrap);
+}
+function pickBuyComplex(c, typed) {
+  if (typed && nameKey(typed) !== c.nkey) {
+    addAlias(typed, c.apt);
+    const memo = $('buyMemo').value.trim();
+    if (!memo.includes('매물명: ' + typed)) $('buyMemo').value = [memo, '매물명: ' + typed].filter(Boolean).join('\n');
+  }
+  $('buyApt').value = c.apt; $('buyDong').value = c.dong;
+  buyMatchHint();
+}
+attachSuggest($('buyApt'), $('buyAptSug'), () => {
+  const x = {area: $('buyArea').value}; const d = buyDataFor(x); if (!d) buyEnsureData(x); return d || mapState.data;
+}, (c) => pickBuyComplex(c, ''));
+let buyHintTimer = null;
+['buyApt', 'buyDong', 'buyArea'].forEach((id) => $(id).addEventListener('input', () => { clearTimeout(buyHintTimer); buyHintTimer = setTimeout(buyMatchHint, 500); }));
+
 function buyEdit(id) {
   const x=buyListings.find(v=>v.id===id); if(!x)return;
-  $('buyId').value=x.id; $('buyApt').value=x.apt||''; $('buyDong').value=x.dong||''; $('buyPrice').value=(x.price/10000).toFixed(2); $('buyArea').value=x.area||84; $('buyFloor').value=x.floor??''; $('buyUrl').value=x.url||''; $('buyMemo').value=x.memo||''; $('buyForm').dataset.source=x.source||'manual'; $('buyForm').dataset.sourceId=x.source_id||'';
+  $('buyId').value=x.id; setTimeout(buyMatchHint,0); $('buyApt').value=x.apt||''; $('buyDong').value=x.dong||''; $('buyPrice').value=(x.price/10000).toFixed(2); $('buyArea').value=x.area||84; $('buyFloor').value=x.floor??''; $('buyUrl').value=x.url||''; $('buyMemo').value=x.memo||''; $('buyForm').dataset.source=x.source||'manual'; $('buyForm').dataset.sourceId=x.source_id||'';
   $('buyCancel').hidden=false; $('buySave').textContent='수정 저장'; $('buyApt').focus(); window.scrollTo({top:0,behavior:'smooth'});
 }
 async function buyDelete(id) {
@@ -1141,7 +1315,7 @@ document.querySelectorAll('[data-buy-filter]').forEach((b)=>b.addEventListener('
 $('buyShare').addEventListener('click',()=>nativeShare('[부동산] 관심 매물 후보',buySummaryText()));
 $('buyMail').addEventListener('click',()=>openMail('[부동산] 관심 매물 후보',buySummaryText()));
 $('buyCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(buySummaryText());alert('관심 매물 요약을 복사했습니다.');}catch(e){prompt('아래 내용을 복사하세요.',buySummaryText());}});
-buyLoad(); buyRender(); buySyncState(buyPin?'PIN 저장됨 · 서버 동기화 버튼을 누르세요':'로컬 저장 모드');
+buyLoad(); buyRender(); buyEnsureData(); buySyncState(buyPin?'PIN 저장됨 · 서버 동기화 버튼을 누르세요':'로컬 저장 모드');
 
 // ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
 const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
