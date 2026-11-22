@@ -122,6 +122,8 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
 .share-actions{display:flex;gap:7px;flex-wrap:wrap}.share-actions button{font:inherit;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg);padding:7px 10px;cursor:pointer}
 @media(max-width:640px){.buy-hero{grid-template-columns:1fr}.buy-hero-side{grid-template-columns:repeat(3,1fr)}.buy-hero-side .card{padding:10px}.buy-hero-side .value{font-size:19px}.buy-table-hide-mobile{display:none}}
 
+.quick-import{border:1px solid var(--line);border-radius:14px;padding:13px 14px;background:var(--panel);margin:10px 0 14px}.quick-import h3{font-size:14px;margin:0 0 4px}.quick-import textarea{font:inherit;font-size:15px;width:100%;min-height:82px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:vertical}.quick-import .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}.quick-import .hint{font-size:12px;color:var(--muted)}.quick-import .status{font-size:12px;color:var(--muted);margin-top:7px}.quick-import .preview{display:none;margin-top:8px;padding:8px 10px;border-radius:9px;background:var(--bg);border:1px solid var(--line);font-size:12px}.quick-import .preview.on{display:block}.quick-import .file-btn{display:inline-flex;align-items:center}.quick-import button,.quick-import .file-btn{font:inherit;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--fg);padding:7px 10px;cursor:pointer}.quick-import button.primary{background:var(--a);color:white;border-color:var(--a)}
+
 </style>
 </head>
 <body>
@@ -171,6 +173,18 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
       <button type="button" id="buyConnect" class="mini-btn">서버 동기화</button>
       <button type="button" id="buyDisconnect" class="mini-btn" hidden>연결 해제</button>
       <span class="muted" id="buySyncMsg">로컬 저장 모드</span>
+    </div>
+    <div class="quick-import">
+      <h3>빠른 매물 등록</h3>
+      <div class="hint">네이버부동산·호갱노노의 링크 또는 공유된 매물 설명을 붙여넣으면 가능한 항목을 자동으로 채웁니다. 링크만으로 사이트 내부 정보를 강제로 수집하지는 않습니다.</div>
+      <textarea id="buyQuickText" placeholder="예) 네이버부동산 공유 내용이나 링크를 붙여넣으세요.
+동탄역... / 매매 8억 2,000 / 전용 84.9㎡ / 12층 / https://..."></textarea>
+      <div class="row">
+        <button type="button" class="primary" id="buyQuickParse">붙여넣기 분석</button>
+        <button type="button" id="buyQuickClear">지우기</button>
+      </div>
+      <div class="status" id="buyQuickStatus">공유 텍스트와 링크는 기기 안에서만 분석합니다. API 비용이 발생하지 않습니다.</div>
+      <div class="preview" id="buyQuickPreview"></div>
     </div>
     <form id="buyForm">
       <input id="buyId" type="hidden">
@@ -866,6 +880,76 @@ loadKakao().then(async () => {
   if (mapState.data.length) mapDraw();
 }).catch((e) => { mapMsg(e.message); });
 
+// ---- 빠른 매물 입력: 공유텍스트/링크 로컬 파싱 (무료) ----
+function quickPriceToEok(text){
+  text=(text||'').replace(/\u00a0/g,' ');
+  let m=text.match(/(?:매매|호가|가격)?\s*(\d{1,2})\s*억(?:\s*(\d{1,4}(?:,\d{3})?))?/);
+  if(m){const man=m[2]?Number(m[2].replace(/,/g,'')):0;return Number(m[1])+man/10000;}
+  m=text.match(/(\d+(?:\.\d+)?)\s*억/); if(m)return Number(m[1]);
+  m=text.match(/(?:매매|호가|가격)\s*([1-9]\d{4,5})\s*만?원?/); if(m)return Number(m[1])/10000;
+  return null;
+}
+function quickSource(url){
+  const u=(url||'').toLowerCase();
+  if(u.includes('land.naver.com')||u.includes('m.land.naver.com'))return 'naver';
+  if(u.includes('hogangnono.com'))return 'hogangnono';
+  return 'manual';
+}
+function quickSourceId(url){
+  if(!url)return null;
+  try{
+    const u=new URL(url); const keys=['articleNo','articleId','listingId','id'];
+    for(const k of keys){const v=u.searchParams.get(k);if(v&&/^\d+$/.test(v))return v;}
+    const m=u.pathname.match(/(?:article|articles|listing|apt|complex)\/(\d{4,})/i); if(m)return m[1];
+  }catch(e){}
+  return null;
+}
+function parseListingText(raw){
+  const text=(raw||'').replace(/\u00a0/g,' ').trim();
+  const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const url=(text.match(/https?:\/\/[^\s<>'"]+/)||[])[0]||'';
+  const price=quickPriceToEok(text);
+  let area=null,floor=null,dong='';
+  let m=text.match(/(?:전용(?:면적)?|전용률)?\s*(\d{2,3}(?:\.\d+)?)\s*(?:㎡|m²|m2)/i); if(m)area=Number(m[1]);
+  if(area==null){m=text.match(/(?:전용|공급)\s*(\d{2,3}(?:\.\d+)?)\s*\/\s*(\d{2,3}(?:\.\d+)?)\s*㎡?/i);if(m)area=Number(m[1]);}
+  m=text.match(/(?:^|\s)(\d{1,2})\s*층(?:\s*\/\s*\d+\s*층)?/m); if(m)floor=Number(m[1]);
+  if(floor==null){m=text.match(/(?:^|\s)(\d{1,2})\s*\/\s*\d{1,2}\s*층/m);if(m)floor=Number(m[1]);}
+  m=text.match(/([가-힣]{1,12}동)(?:\s|,|$)/); if(m)dong=m[1];
+  const reject=/^(https?:|매매|전세|월세|호가|가격|전용|공급|층|방향|확인매물|중개|매물번호|등록)/i;
+  let apt='';
+  for(const ln of lines){
+    const clean=ln.replace(/https?:\/\/\S+/g,'').replace(/^[\[\(].*?[\]\)]\s*/,'').trim();
+    if(clean.length>=3&&clean.length<=60&&!reject.test(clean)&&!/^\d/.test(clean)&&!/(억|만원|㎡|m²)/i.test(clean)){
+      apt=clean.replace(/[|·].*$/,'').trim(); break;
+    }
+  }
+  let direction=''; m=text.match(/(?:방향|향)\s*[:：]?\s*(남동|남서|북동|북서|남|북|동|서)향?/); if(m)direction=m[1]+'향';
+  let building=''; m=text.match(/(?:^|\s)(\d{3,4})동(?:\s|,|$)/m); if(m)building=m[1]+'동';
+  return {apt,dong,price,area,floor,url,source:quickSource(url),source_id:quickSourceId(url),direction,building,raw:text};
+}
+function applyQuickListing(x){
+  if(x.apt)$('buyApt').value=x.apt;
+  if(x.dong)$('buyDong').value=x.dong;
+  if(x.price)$('buyPrice').value=Number(x.price).toFixed(2);
+  if(x.area)$('buyArea').value=Number(x.area).toFixed(2).replace(/\.00$/,'');
+  if(x.floor!=null&&x.floor!=='')$('buyFloor').value=x.floor;
+  if(x.url)$('buyUrl').value=x.url;
+  const extras=[]; if(x.direction)extras.push('향: '+x.direction); if(x.building)extras.push('동: '+x.building);
+  if(extras.length){const old=$('buyMemo').value.trim();$('buyMemo').value=[old,...extras].filter(Boolean).join(old?'\n':'');}
+  $('buyForm').dataset.source=x.source||'manual'; $('buyForm').dataset.sourceId=x.source_id||'';
+  const fields=[x.apt&&'단지',x.price&&'가격',x.area&&'면적',x.floor!=null&&'층',x.direction&&'향',x.url&&'링크'].filter(Boolean);
+  $('buyQuickPreview').classList.add('on');
+  $('buyQuickPreview').textContent=(fields.length?fields.join(' · ')+' 자동 입력':'자동 입력할 값을 충분히 찾지 못함')+'했습니다. 저장 전 확인하세요.';
+}
+$('buyQuickParse').addEventListener('click',()=>{
+  const x=parseListingText($('buyQuickText').value); applyQuickListing(x);
+  $('buyQuickStatus').textContent=x.url?(x.source==='manual'?'일반 링크로 인식했습니다. 자동으로 읽은 값만 확인해 주세요.':'출처: '+x.source+' · 링크 식별값도 함께 저장합니다.'):'링크 없이 공유 텍스트만 분석했습니다.';
+});
+$('buyQuickClear').addEventListener('click',()=>{
+  $('buyQuickText').value=''; $('buyQuickPreview').classList.remove('on');
+  $('buyQuickStatus').textContent='공유 텍스트와 링크는 기기 안에서만 분석합니다. API 비용이 발생하지 않습니다.';
+});
+
 // ---- 관심 매물: localStorage 기본 + PIN 연결 시 Supabase 동기화 ----
 const BUY_KEY = 'buyerListingsV1';
 const BUY_PIN_KEY = 'buyerListingsPinV1';
@@ -936,6 +1020,7 @@ function buyEval(x) {
 function buyReset() {
   ['buyId','buyApt','buyDong','buyPrice','buyFloor','buyUrl','buyMemo'].forEach((id) => { $(id).value = ''; });
   $('buyArea').value = '84'; $('buyCancel').hidden = true; $('buySave').textContent = '매물 저장';
+  $('buyForm').dataset.source='manual'; $('buyForm').dataset.sourceId='';
 }
 function prefillListing(c) {
   document.querySelectorAll('.tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'Buy'));
@@ -1014,7 +1099,7 @@ function buyRender() {
 }
 function buyEdit(id) {
   const x=buyListings.find(v=>v.id===id); if(!x)return;
-  $('buyId').value=x.id; $('buyApt').value=x.apt||''; $('buyDong').value=x.dong||''; $('buyPrice').value=(x.price/10000).toFixed(2); $('buyArea').value=x.area||84; $('buyFloor').value=x.floor??''; $('buyUrl').value=x.url||''; $('buyMemo').value=x.memo||'';
+  $('buyId').value=x.id; $('buyApt').value=x.apt||''; $('buyDong').value=x.dong||''; $('buyPrice').value=(x.price/10000).toFixed(2); $('buyArea').value=x.area||84; $('buyFloor').value=x.floor??''; $('buyUrl').value=x.url||''; $('buyMemo').value=x.memo||''; $('buyForm').dataset.source=x.source||'manual'; $('buyForm').dataset.sourceId=x.source_id||'';
   $('buyCancel').hidden=false; $('buySave').textContent='수정 저장'; $('buyApt').focus(); window.scrollTo({top:0,behavior:'smooth'});
 }
 async function buyDelete(id) {
@@ -1028,7 +1113,7 @@ $('buyCancel').addEventListener('click', buyReset);
 $('buyForm').addEventListener('submit',async(ev)=>{
   ev.preventDefault(); const priceEok=parseFloat($('buyPrice').value); if(!(priceEok>0))return;
   const id=$('buyId').value, now=new Date().toISOString(), price=Math.round(priceEok*10000);
-  const base={id:id||null,apt:$('buyApt').value.trim(),dong:$('buyDong').value.trim(),price,area:parseFloat($('buyArea').value)||84,floor:$('buyFloor').value===''?null:parseInt($('buyFloor').value,10),url:$('buyUrl').value.trim(),memo:$('buyMemo').value.trim(),source:'manual',source_id:null,updated_at:now};
+  const base={id:id||null,apt:$('buyApt').value.trim(),dong:$('buyDong').value.trim(),price,area:parseFloat($('buyArea').value)||84,floor:$('buyFloor').value===''?null:parseInt($('buyFloor').value,10),url:$('buyUrl').value.trim(),memo:$('buyMemo').value.trim(),source:$('buyForm').dataset.source||quickSource($('buyUrl').value)||'manual',source_id:$('buyForm').dataset.sourceId||quickSourceId($('buyUrl').value)||null,updated_at:now};
   try {
     if(buyCloud){ $('buySave').disabled=true; await buyCloudUpsert(base); await buyCloudLoad(); }
     else if(id){const x=buyListings.find(v=>v.id===id); if(!x)return; x.history=x.history||[]; if(x.price!==price)x.history.push({at:now,price}); Object.assign(x,base,{id}); buyPersist(); buyRender();}
