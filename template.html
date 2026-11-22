@@ -113,6 +113,15 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
 .buy-sync{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0 12px}.buy-sync label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;min-width:220px}.buy-sync input{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg)}
 #tabBuy{display:flex;flex-direction:column;gap:22px}#tabBuy[hidden]{display:none}
 @media(max-width:560px){.buy-grid{grid-template-columns:1fr}.buy-grid .wide{grid-column:auto}}
+.buy-hero{display:grid;grid-template-columns:1.25fr .75fr;gap:12px;align-items:stretch}
+.buy-hero-main{border:1px solid var(--line);border-radius:16px;padding:16px;background:linear-gradient(135deg,var(--panel),var(--bg))}
+.buy-hero-main .eyebrow{font-size:12px;color:var(--muted);margin-bottom:4px}.buy-hero-main .headline{font-size:24px;font-weight:750;line-height:1.3}.buy-hero-main .reason{font-size:13px;color:var(--muted);margin-top:8px}
+.buy-hero-side{display:grid;grid-template-columns:1fr;gap:10px}.buy-hero-side .card{display:flex;flex-direction:column;justify-content:center}
+.buy-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.buy-toolbar .spacer{flex:1}.buy-filter{font:inherit;font-size:13px;padding:7px 11px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted);cursor:pointer}.buy-filter.on{background:var(--a);border-color:var(--a);color:white}
+.candidate-list{display:grid;grid-template-columns:1fr;gap:10px;margin:10px 0 2px}.candidate-card{border:1px solid var(--line);border-radius:14px;padding:13px 14px;background:var(--panel)}.candidate-card.good{border-color:color-mix(in srgb,var(--down) 55%,var(--line))}.candidate-card.warn{border-color:color-mix(in srgb,var(--b) 50%,var(--line))}.candidate-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}.candidate-name{font-weight:700}.candidate-badge{font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--bg);white-space:nowrap}.candidate-badge.good{color:var(--down)}.candidate-badge.warn{color:var(--b)}.candidate-metrics{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px;font-size:12px;color:var(--muted)}
+.share-actions{display:flex;gap:7px;flex-wrap:wrap}.share-actions button{font:inherit;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg);padding:7px 10px;cursor:pointer}
+@media(max-width:640px){.buy-hero{grid-template-columns:1fr}.buy-hero-side{grid-template-columns:repeat(3,1fr)}.buy-hero-side .card{padding:10px}.buy-hero-side .value{font-size:19px}.buy-table-hide-mobile{display:none}}
+
 </style>
 </head>
 <body>
@@ -179,16 +188,27 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     </form>
   </section>
   <section>
-    <div class="cards" id="buyCards">
-      <div class="card"><div class="label">등록 매물</div><div class="value" id="buyCount">0</div><div class="sub">현재 추적 중</div></div>
-      <div class="card"><div class="label">가장 높은 매수점수</div><div class="value" id="buyBest">—</div><div class="sub" id="buyBestName">—</div></div>
-      <div class="card"><div class="label">가격 인하 매물</div><div class="value" id="buyCuts">0</div><div class="sub">최초 등록가 대비</div></div>
-      <div class="card"><div class="label">기대가보다 싼 매물</div><div class="value" id="buyCheap">0</div><div class="sub">6개월 중위가 대비 -5% 이하</div></div>
+    <div class="buy-hero">
+      <div class="buy-hero-main">
+        <div class="eyebrow">오늘의 매수 후보</div>
+        <div class="headline" id="buyHeroTitle">관심 매물을 등록해 보세요</div>
+        <div class="reason" id="buyHeroReason">실거래·6개월 기대가·신고가·건물품질을 함께 비교해 가장 유리한 후보를 먼저 보여줍니다.</div>
+        <div class="share-actions" style="margin-top:12px"><button type="button" id="buyShare">공유하기</button><button type="button" id="buyMail">메일로 열기</button><button type="button" id="buyCopy">요약 복사</button></div>
+      </div>
+      <div class="buy-hero-side">
+        <div class="card"><div class="label">추적</div><div class="value" id="buyCount">0</div><div class="sub">등록 매물</div></div>
+        <div class="card"><div class="label">가격 인하</div><div class="value" id="buyCuts">0</div><div class="sub">최초가 대비</div></div>
+        <div class="card"><div class="label">기대가보다 쌈</div><div class="value" id="buyCheap">0</div><div class="sub">-5% 이하</div></div>
+      </div>
     </div>
+    <div class="candidate-list" id="buyTopCandidates"></div>
   </section>
   <section>
-    <h2>매물 비교표</h2>
-    <div class="tw"><table id="buyTable"><thead><tr><th class="l">단지 / 메모</th><th>호가</th><th>최근 실거래</th><th>6개월 기대가</th><th>기대가 대비</th><th>신고가 대비</th><th>가격 변화</th><th>건물품질</th><th>종합 매수점수</th><th>관리</th></tr></thead><tbody id="buyRows"></tbody></table></div>
+    <h2>관심 매물 비교</h2>
+    <div class="buy-toolbar">
+      <button class="buy-filter on" type="button" data-buy-filter="all">전체</button><button class="buy-filter" type="button" data-buy-filter="strong">강한 후보</button><button class="buy-filter" type="button" data-buy-filter="cut">가격 인하</button><button class="buy-filter" type="button" data-buy-filter="cheap">기대가보다 쌈</button><span class="spacer"></span><span class="muted" id="buyViewCount"></span>
+    </div>
+    <div class="tw"><table id="buyTable"><thead><tr><th class="l">단지 / 메모</th><th>호가</th><th>최근 실거래</th><th class="buy-table-hide-mobile">6개월 기대가</th><th>기대가 대비</th><th class="buy-table-hide-mobile">신고가 대비</th><th>가격 변화</th><th class="buy-table-hide-mobile">건물품질</th><th>종합 매수점수</th><th>관리</th></tr></thead><tbody id="buyRows"></tbody></table></div>
     <p class="muted" id="buyEmpty">등록한 관심 매물이 없습니다. 단지 찾기에서 단지를 선택한 뒤 ‘관심 매물에 추가’를 눌러도 됩니다.</p>
   </section>
 </div>
@@ -668,6 +688,12 @@ async function showInfo(c, zoneName) {
   addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '12px'; addBuy.textContent = '관심 매물에 추가';
   addBuy.addEventListener('click', () => prefillListing(c));
   links.appendChild(addBuy);
+  const mailBtn = document.createElement('button');
+  mailBtn.type='button'; mailBtn.className='mini-btn'; mailBtn.style.marginLeft='6px'; mailBtn.textContent='조회 결과 메일';
+  mailBtn.addEventListener('click',()=>shareComplexMail(c, zoneName));
+  links.appendChild(mailBtn);
+  const shareBtn=document.createElement('button'); shareBtn.type='button'; shareBtn.className='mini-btn'; shareBtn.style.marginLeft='6px'; shareBtn.textContent='공유';
+  shareBtn.addEventListener('click',()=>shareComplexNative(c,zoneName)); links.appendChild(shareBtn);
   box.append(title, meta, stat, fair, bld, links, wrap);
   try {
     const [lo, hi] = sizeRange();
@@ -918,25 +944,61 @@ function prefillListing(c) {
   $('buyPrice').value = c.last_price ? (c.last_price / 10000).toFixed(2) : ''; $('buyPrice').focus();
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
+let buyFilter = 'all';
+function buyReason(x,e){
+  const bits=[];
+  if(e.fairGap!=null) bits.push(`기대가 대비 ${sgn1(e.fairGap)}`);
+  if(e.lastGap!=null) bits.push(`최근 실거래 대비 ${sgn1(e.lastGap)}`);
+  if(e.buildingScore!=null) bits.push(`건물 ${e.buildingScore}점`);
+  const hist=x.history||[], first=hist.length?Number(hist[0].price):Number(x.price), cut=pctGap(x.price,first);
+  if(cut!=null&&cut<0) bits.push(`최초가 대비 ${sgn1(cut)}`);
+  return bits.join(' · ') || '비교 데이터 수집 중';
+}
+function buySummaryText(rows=null){
+  const list=(rows||buyListings).slice().sort((a,b)=>buyEval(b).score-buyEval(a).score);
+  const lines=[`경기 남부 84㎡ 관심 매물 요약 (${new Date().toLocaleDateString('ko-KR')})`,`대시보드: ${location.href}`,''];
+  list.slice(0,12).forEach((x,i)=>{const e=buyEval(x);lines.push(`${i+1}. ${x.apt}${x.dong?' · '+x.dong:''} / ${(x.price/10000).toFixed(2)}억 / ${e.score}점 ${e.label} / ${buyReason(x,e)}`);if(x.url)lines.push(`   ${x.url}`);});
+  return lines.join('\n');
+}
+function openMail(subject,body){ location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body); }
+function complexShareText(c,zoneName){
+  const fo=fairOf(c); return [`${c.apt} · ${c.dong} ${c.jibun} · ${zoneName}`,`최근 거래 ${fmtEok(c.last_price)} (${c.last_date})`,`신고가 ${fmtEok(c.high)} (${String(c.high_date).slice(0,7)})${c.drop_pct>0?' · -'+c.drop_pct+'%':''}`,fo.gap==null?'기대가 판정 불가':`6개월 기대가 ${fmtEok(c.med6)} · 대비 ${sgn1(fo.gap)}`,c.building?`건물품질 ${c.building_score??'—'}점 · ${buildingText(c.building)}`:'건축물대장 수집 대기',`대시보드: ${location.href}`].join('\n');
+}
+function shareComplexMail(c,zoneName){openMail(`[부동산] ${c.apt} 조회 결과`,complexShareText(c,zoneName));}
+async function nativeShare(title,text){if(navigator.share){try{await navigator.share({title,text,url:location.href});return;}catch(e){if(e.name==='AbortError')return;}}try{await navigator.clipboard.writeText(text);alert('공유 기능을 지원하지 않아 요약을 복사했습니다.');}catch(e){prompt('아래 내용을 복사하세요.',text);}}
+function shareComplexNative(c,zoneName){nativeShare(`[부동산] ${c.apt}`,complexShareText(c,zoneName));}
+function buyMatchesFilter(x,e){
+  const hist=x.history||[], first=hist.length?Number(hist[0].price):Number(x.price), cut=pctGap(x.price,first);
+  if(buyFilter==='strong') return e.score>=80;
+  if(buyFilter==='cut') return cut!=null&&cut<0;
+  if(buyFilter==='cheap') return e.fairGap!=null&&e.fairGap<=-5;
+  return true;
+}
+function renderTopCandidates(sorted){
+  const box=$('buyTopCandidates'); box.replaceChildren();
+  sorted.slice(0,3).forEach((x)=>{const e=buyEval(x), d=document.createElement('div');d.className='candidate-card '+(e.score>=80?'good':e.score>=65?'warn':'');const top=document.createElement('div');top.className='candidate-top';const name=document.createElement('div');name.className='candidate-name';name.textContent=x.apt+(x.dong?' · '+x.dong:'');const badge=document.createElement('div');badge.className='candidate-badge '+(e.score>=80?'good':'warn');badge.textContent=`${e.score} · ${e.label}`;top.append(name,badge);const m=document.createElement('div');m.className='candidate-metrics';m.innerHTML=`<span>호가 ${(x.price/10000).toFixed(2)}억</span><span>${buyReason(x,e)}</span>`;d.append(top,m);d.addEventListener('click',()=>buyEdit(x.id));box.appendChild(d);});
+}
 function buyRender() {
   const tb = $('buyRows'); tb.replaceChildren();
   let cuts = 0, cheap = 0, best = null;
-  buyListings.slice().sort((a,b) => buyEval(b).score - buyEval(a).score).forEach((x) => {
+  const sorted = buyListings.slice().sort((a,b) => buyEval(b).score - buyEval(a).score);
+  renderTopCandidates(sorted);
+  sorted.forEach((x)=>{const e=buyEval(x),hist=x.history||[],first=hist.length?Number(hist[0].price):x.price,chg=pctGap(x.price,first);if(chg!=null&&chg<0)cuts++;if(e.fairGap!=null&&e.fairGap<=-5)cheap++;if(!best||e.score>best.eval.score)best={x,eval:e};});
+  const visible = sorted.filter((x)=>buyMatchesFilter(x,buyEval(x)));
+  visible.forEach((x) => {
     const e = buyEval(x), hist = x.history || [], first = hist.length ? Number(hist[0].price) : x.price, chg = pctGap(x.price, first);
-    if (chg != null && chg < 0) cuts++; if (e.fairGap != null && e.fairGap <= -5) cheap++;
-    if (!best || e.score > best.eval.score) best = {x, eval:e};
     const tr = document.createElement('tr');
     const td = (text, cls) => { const d=document.createElement('td'); d.textContent=text; if(cls)d.className=cls; tr.appendChild(d); return d; };
     const name = td('', 'l');
     const strong = document.createElement('strong'); strong.textContent = x.apt + (x.dong ? ' · ' + x.dong : ''); name.appendChild(strong);
     if (x.memo) { const m=document.createElement('div'); m.className='hist'; m.textContent=x.memo; name.appendChild(m); }
     if (x.url) { const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='매물 링크 ↗'; a.style.display='block'; name.appendChild(a); }
-    td((x.price/10000).toFixed(2)+'억'); td(e.c ? fmtEok(e.c.last_price) : '단지 매칭 안됨'); td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—');
+    td((x.price/10000).toFixed(2)+'억'); td(e.c ? fmtEok(e.c.last_price) : '단지 매칭 안됨'); td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
     td(e.fairGap==null?'—':sgn1(e.fairGap), e.fairGap!=null&&e.fairGap<=-5?'sg good':e.fairGap!=null&&e.fairGap>=5?'sg warn':'');
-    td(e.highGap==null?'—':sgn1(e.highGap), e.highGap!=null&&e.highGap<=-10?'sg good':'');
+    td(e.highGap==null?'—':sgn1(e.highGap), (e.highGap!=null&&e.highGap<=-10?'sg good ':'')+'buy-table-hide-mobile');
     const hc=td(chg==null?'—':sgn1(chg), chg<0?'sg good':chg>0?'sg warn':'');
     if(hist.length>1){const d=document.createElement('div');d.className='hist';d.textContent=hist.slice(-3).map(h=>String(h.at).slice(0,10)+' '+(Number(h.price)/10000).toFixed(2)+'억').join(' → ');hc.appendChild(d);}
-    const bc=td(e.buildingScore==null?'수집 대기':e.buildingScore+'점', e.buildingScore>=70?'sg good':e.buildingScore!=null&&e.buildingScore<45?'sg warn':'');
+    const bc=td(e.buildingScore==null?'수집 대기':e.buildingScore+'점', (e.buildingScore>=70?'sg good ':e.buildingScore!=null&&e.buildingScore<45?'sg warn ':'')+'buy-table-hide-mobile');
     if(e.c && e.c.building){const d=document.createElement('div');d.className='hist';d.textContent=buildingText(e.c.building);bc.appendChild(d);}
     td(e.score+' · '+e.label+' (가격 '+e.priceScore+')','score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
     const act=td('');
@@ -945,7 +1007,10 @@ function buyRender() {
     tb.appendChild(tr);
   });
   $('buyCount').textContent = buyListings.length; $('buyCuts').textContent = cuts; $('buyCheap').textContent = cheap;
-  $('buyBest').textContent = best ? best.eval.score : '—'; $('buyBestName').textContent = best ? best.x.apt + ' · ' + best.eval.label : '—'; $('buyEmpty').hidden = !!buyListings.length;
+  $('buyViewCount').textContent = visible.length+'개 표시';
+  $('buyHeroTitle').textContent = best ? `${best.x.apt} · ${best.eval.score}점 ${best.eval.label}` : '관심 매물을 등록해 보세요';
+  $('buyHeroReason').textContent = best ? `호가 ${(best.x.price/10000).toFixed(2)}억 · ${buyReason(best.x,best.eval)}` : '실거래·6개월 기대가·신고가·건물품질을 함께 비교해 가장 유리한 후보를 먼저 보여줍니다.';
+  $('buyEmpty').hidden = !!buyListings.length;
 }
 function buyEdit(id) {
   const x=buyListings.find(v=>v.id===id); if(!x)return;
@@ -987,6 +1052,10 @@ $('buyExport').addEventListener('click',()=>{
   const blob=new Blob([JSON.stringify({version:2,exported_at:new Date().toISOString(),storage:buyCloud?'supabase':'local',listings:buyListings},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='home-dashboard-listings-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 });
 $('buyImport').addEventListener('change',async(ev)=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const rows=Array.isArray(d)?d:d.listings;if(!Array.isArray(rows))throw new Error('형식 오류');if(!confirm(rows.length+'개 매물을 '+(buyCloud?'Supabase에 추가/갱신':'현재 로컬 목록으로 교체')+'할까요?'))return;if(buyCloud){await buyMigrateLocal(rows);await buyCloudLoad();}else{buyListings=rows;buyPersist();buyRender();}}catch(e){alert('백업 파일을 읽지 못했습니다: '+e.message);}finally{ev.target.value='';}});
+document.querySelectorAll('[data-buy-filter]').forEach((b)=>b.addEventListener('click',()=>{buyFilter=b.dataset.buyFilter;document.querySelectorAll('[data-buy-filter]').forEach(x=>x.classList.toggle('on',x===b));buyRender();}));
+$('buyShare').addEventListener('click',()=>nativeShare('[부동산] 관심 매물 후보',buySummaryText()));
+$('buyMail').addEventListener('click',()=>openMail('[부동산] 관심 매물 후보',buySummaryText()));
+$('buyCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(buySummaryText());alert('관심 매물 요약을 복사했습니다.');}catch(e){prompt('아래 내용을 복사하세요.',buySummaryText());}});
 buyLoad(); buyRender(); buySyncState(buyPin?'PIN 저장됨 · 서버 동기화 버튼을 누르세요':'로컬 저장 모드');
 
 // ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
