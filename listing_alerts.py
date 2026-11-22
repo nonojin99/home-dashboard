@@ -140,6 +140,14 @@ def main():
         print(f"관심 매물 조회 실패: {e}", file=sys.stderr)
         return 1
 
+    # 관심 단지(목표가): 매물이 아니라 "이 가격이면 산다". 목표가 이하 실거래가 신고되면 알린다.
+    watch_hits = []
+    for x in [v for v in listings if v.get("source") == "watch"]:
+        r = evaluate(x, by_range[area_range(x)])
+        c = r["complex"]
+        if c and c.get("last_price") and int(c["last_price"]) <= int(x["price"]):
+            watch_hits.append((x, c))
+    listings = [v for v in listings if v.get("source") != "watch"]
     rows = [evaluate(x, by_range[area_range(x)]) for x in listings]
     # 의미 있는 후보만: 매수 검토 이상 또는 최초가 대비 2%+ 인하
     for r in rows:
@@ -154,7 +162,9 @@ def main():
         return f"{x['id']}|{x['price']}|{r['label']}"
 
     new = [r for r in rows if k(r) not in seen]
-    if not new:
+    wkey = lambda x, c: f"watch|{x['id']}|{c.get('last_date')}|{c.get('last_price')}"
+    watch_new = [(x, c) for x, c in watch_hits if wkey(x, c) not in seen]
+    if not new and not watch_new:
         print(f"관심 매물 알림: 새 조건 충족 없음 (현재 {len(rows)}건)")
         return 0
 
@@ -171,15 +181,21 @@ def main():
                    f"<td style='{th}'>{'—' if r['building_score'] is None else str(r['building_score'])+'점'}</td>"
                    f"<td style='{th};font-weight:700'>{r['score']} · {r['label']}</td></tr>")
         lines.append(f"{x['apt']} {x['price']/10000:.2f}억 / 기대가 {fair} / 최초가 {cut} / {r['score']} {r['label']}")
-    body = ("<div style='font:14px/1.6 -apple-system,Apple SD Gothic Neo,sans-serif'>"
+    wh = ""
+    if watch_new:
+        wh = "<h3>목표가 이하 실거래 발생</h3><ul>" + "".join(
+            f"<li>{html.escape(x['apt'])} · 목표가 {int(x['price'])/10000:.2f}억 → 실거래 {int(c['last_price'])/10000:.2f}억 ({c.get('last_date')})</li>" for x, c in watch_new) + "</ul>"
+        lines += [f"[목표가] {x['apt']} 목표 {int(x['price'])/10000:.2f}억 / 실거래 {int(c['last_price'])/10000:.2f}억 ({c.get('last_date')})" for x, c in watch_new]
+    body = ("<div style='font:14px/1.6 -apple-system,Apple SD Gothic Neo,sans-serif'>" + wh +
             f"<h3>관심 매물 매수 후보 {len(new)}건</h3>"
             f"<table style='border-collapse:collapse;font-size:13px'><tr><th style='{th}text-align:left'>매물</th>"
             f"<th style='{th}'>호가</th><th style='{th}'>기대가 대비</th><th style='{th}'>최초가 대비</th><th style='{th}'>건물</th><th style='{th}'>점수</th></tr>{''.join(trs)}</table>"
             "<p style='font-size:12px;color:#6e6e73'>종합 매수점수는 가격 70% + 건물품질 30% 휴리스틱입니다. 동·층·향·수리·권리관계는 별도 확인이 필요합니다.</p>"
             f"<p><a href='{mail.SITE}'>대시보드 열기</a></p></div>")
-    rc = mail.send(f"[부동산] 관심 매물 후보 {len(new)}건", "\n".join(lines), body)
+    subject = f"[부동산] 관심 매물 후보 {len(new)}건" + (f" · 목표가 도달 {len(watch_new)}건" if watch_new else "")
+    rc = mail.send(subject, "\n".join(lines), body)
     if rc == 0:
-        SEEN.write_text(json.dumps(sorted(seen | {k(r) for r in new}), ensure_ascii=False), encoding="utf-8")
+        SEEN.write_text(json.dumps(sorted(seen | {k(r) for r in new} | {wkey(x, c) for x, c in watch_new}), ensure_ascii=False), encoding="utf-8")
     return rc
 
 

@@ -810,15 +810,16 @@ async function showInfo(c, zoneName) {
   });
   const addBuy = document.createElement('button');
   addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '12px'; addBuy.textContent = '관심 매물에 추가';
-  addBuy.addEventListener('click', () => prefillListing(c));
   links.appendChild(addBuy);
+  const quick = quickAddBox(c);
+  addBuy.addEventListener('click', () => { quick.hidden = !quick.hidden; if (!quick.hidden) quick.querySelector('input').focus(); });
   const mailBtn = document.createElement('button');
   mailBtn.type='button'; mailBtn.className='mini-btn'; mailBtn.style.marginLeft='6px'; mailBtn.textContent='조회 결과 메일';
   mailBtn.addEventListener('click',()=>shareComplexMail(c, zoneName));
   links.appendChild(mailBtn);
   const shareBtn=document.createElement('button'); shareBtn.type='button'; shareBtn.className='mini-btn'; shareBtn.style.marginLeft='6px'; shareBtn.textContent='공유';
   shareBtn.addEventListener('click',()=>shareComplexNative(c,zoneName)); links.appendChild(shareBtn);
-  box.append(title, meta, stat, fair, bld, links, wrap);
+  box.append(title, meta, stat, fair, bld, links, quick, wrap);
   try {
     const [lo, hi] = sizeRange();
     const res = await fetch(SB_URL + '/rest/v1/rpc/complex_trades', {
@@ -1179,6 +1180,43 @@ function buyReset() {
   $('buyArea').value = '84'; $('buyCancel').hidden = true; $('buySave').textContent = '매물 저장';
   $('buyForm').dataset.source='manual'; $('buyForm').dataset.sourceId=''; $('buyMatchHint').replaceChildren();
 }
+// 단지 찾기에서 바로 관심 등록: 실매물(호가) 또는 관심 단지(목표가). 저장은 관심 매물 폼의 저장 경로를 그대로 쓴다.
+function quickAddBox(c) {
+  const box = document.createElement('div');
+  box.className = 'quick-add'; box.hidden = true;
+  box.style.cssText = 'margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px';
+  const mk = (label, el) => { const l = document.createElement('label'); l.style.cssText = 'font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px'; l.append(label, el); box.appendChild(l); return el; };
+  const inp = (attrs) => { const e = document.createElement('input'); Object.assign(e, attrs); e.style.cssText = 'font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg);width:100%;box-sizing:border-box'; return e; };
+  const kind = document.createElement('select');
+  kind.style.cssText = 'font:inherit;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg)';
+  [['listing', '실매물 (호가)'], ['watch', '관심 단지 (목표가)']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; kind.appendChild(o); });
+  mk('종류', kind);
+  const price = mk('호가 (억)', inp({type: 'number', step: '0.01', min: '0', placeholder: c.last_price ? '최근 실거래 ' + (c.last_price / 10000).toFixed(2) : '예: 8.50'}));
+  const floor = mk('층 (선택)', inp({type: 'number', step: '1', placeholder: '예: 12'}));
+  const [lo, hi] = sizeRange();
+  const area = mk('전용면적 (㎡)', inp({type: 'number', step: '0.01', value: hi - lo > 50 ? 84 : Math.round((lo + hi) / 2 * 10) / 10}));
+  kind.addEventListener('change', () => { price.parentNode.firstChild.textContent = kind.value === 'watch' ? '목표가 (억)' : '호가 (억)'; floor.parentNode.hidden = kind.value === 'watch'; });
+  const save = document.createElement('button'); save.type = 'button'; save.className = 'mini-btn'; save.textContent = '관심 매물에 저장';
+  save.style.cssText += ';background:var(--a);border-color:var(--a);color:#fff';
+  const more = document.createElement('button'); more.type = 'button'; more.className = 'mini-btn'; more.textContent = '상세 입력 (관심 매물 탭)';
+  const msg = document.createElement('div'); msg.className = 'muted'; msg.style.cssText = 'grid-column:1/-1;font-size:12px';
+  msg.textContent = '관심 단지는 매물이 없어도 "이 가격이면 산다"는 목표가로 등록합니다. 그 가격 이하 실거래가 나오면 알림 메일을 보냅니다.';
+  box.append(save, more, msg);
+  more.addEventListener('click', () => prefillListing(c));
+  save.addEventListener('click', () => {
+    const p = parseFloat(price.value);
+    if (!(p > 0)) { msg.textContent = (kind.value === 'watch' ? '목표가' : '호가') + '를 입력하세요.'; price.focus(); return; }
+    buyReset();
+    $('buyApt').value = c.apt; $('buyDong').value = c.dong; $('buyPrice').value = p.toFixed(2);
+    $('buyArea').value = area.value || 84; $('buyFloor').value = kind.value === 'watch' ? '' : floor.value;
+    $('buyMemo').value = '';
+    $('buyForm').dataset.source = kind.value === 'watch' ? 'watch' : 'manual';
+    $('buyForm').requestSubmit();
+    msg.textContent = `저장했습니다: ${c.apt} ${kind.value === 'watch' ? '목표가' : '호가'} ${p.toFixed(2)}억 · 관심 매물 탭에서 확인할 수 있습니다.`;
+    price.value = '';
+  });
+  return box;
+}
 function prefillListing(c) {
   document.querySelectorAll('.tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'Buy'));
   ['Find','Buy','Dash','Sum'].forEach((n) => { $('tab' + n).hidden = n !== 'Buy'; });
@@ -1219,14 +1257,16 @@ function buyMatchesFilter(x,e){
 }
 function renderTopCandidates(sorted){
   const box=$('buyTopCandidates'); box.replaceChildren();
-  sorted.slice(0,3).forEach((x)=>{const e=buyEval(x), d=document.createElement('div');d.className='candidate-card '+(e.score>=80?'good':e.score>=65?'warn':'');const top=document.createElement('div');top.className='candidate-top';const name=document.createElement('div');name.className='candidate-name';name.textContent=x.apt+(x.dong?' · '+x.dong:'');const badge=document.createElement('div');badge.className='candidate-badge '+(e.score>=80?'good':'warn');badge.textContent=`${e.score} · ${e.label}`;top.append(name,badge);const m=document.createElement('div');m.className='candidate-metrics';m.innerHTML=`<span>호가 ${(x.price/10000).toFixed(2)}억</span><span>${buyReason(x,e)}</span>`;d.append(top,m);d.addEventListener('click',()=>buyEdit(x.id));box.appendChild(d);});
+  sorted.slice(0,3).forEach((x)=>{const e=buyEval(x), d=document.createElement('div');d.className='candidate-card '+(e.score>=80?'good':e.score>=65?'warn':'');const top=document.createElement('div');top.className='candidate-top';const name=document.createElement('div');name.className='candidate-name';name.textContent=x.apt+(x.dong?' · '+x.dong:'');const badge=document.createElement('div');badge.className='candidate-badge '+(e.score>=80?'good':'warn');badge.textContent=`${e.score} · ${e.label}`;top.append(name,badge);const m=document.createElement('div');m.className='candidate-metrics';m.innerHTML=`<span>${x.source==='watch'?'목표가':'호가'} ${(x.price/10000).toFixed(2)}억</span><span>${buyReason(x,e)}</span>`;d.append(top,m);d.addEventListener('click',()=>buyEdit(x.id));box.appendChild(d);});
 }
 function buyRender() {
   const tb = $('buyRows'); tb.replaceChildren();
   let cuts = 0, cheap = 0, best = null;
-  const sorted = buyListings.slice().sort((a,b) => buyEval(b).score - buyEval(a).score);
-  renderTopCandidates(sorted);
-  sorted.forEach((x)=>{const e=buyEval(x),hist=x.history||[],first=hist.length?Number(hist[0].price):x.price,chg=pctGap(x.price,first);if(chg!=null&&chg<0)cuts++;if(e.fairGap!=null&&e.fairGap<=-5)cheap++;if(!best||e.score>best.eval.score)best={x,eval:e};});
+  // 관심 단지(목표가)는 매물이 아니라서 매수 후보 순위·요약에서 빼고 목록 아래에 둔다
+  const isWatch = (x) => x.source === 'watch';
+  const sorted = buyListings.slice().sort((a,b) => (isWatch(a) - isWatch(b)) || (buyEval(b).score - buyEval(a).score));
+  renderTopCandidates(sorted.filter((x) => !isWatch(x)));
+  sorted.filter((x) => !isWatch(x)).forEach((x)=>{const e=buyEval(x),hist=x.history||[],first=hist.length?Number(hist[0].price):x.price,chg=pctGap(x.price,first);if(chg!=null&&chg<0)cuts++;if(e.fairGap!=null&&e.fairGap<=-5)cheap++;if(!best||e.score>best.eval.score)best={x,eval:e};});
   const visible = sorted.filter((x)=>buyMatchesFilter(x,buyEval(x)));
   visible.forEach((x) => {
     const e = buyEval(x), hist = x.history || [], first = hist.length ? Number(hist[0].price) : x.price, chg = pctGap(x.price, first);
@@ -1234,6 +1274,7 @@ function buyRender() {
     const td = (text, cls) => { const d=document.createElement('td'); d.textContent=text; if(cls)d.className=cls; tr.appendChild(d); return d; };
     const name = td('', 'l');
     const strong = document.createElement('strong'); strong.textContent = x.apt + (x.dong ? ' · ' + x.dong : ''); name.appendChild(strong);
+    if (x.source === 'watch') { const t=document.createElement('div'); t.className='hist'; t.textContent='관심 단지 · 가격은 목표가 (매물 아님)'; name.appendChild(t); }
     if (x.memo) { const m=document.createElement('div'); m.className='hist'; m.textContent=x.memo; name.appendChild(m); }
     if (x.url) { const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='매물 링크 ↗'; a.style.display='block'; name.appendChild(a); }
     td((x.price/10000).toFixed(2)+'억'); const lc=td(e.c ? fmtEok(e.c.last_price) : (buyDataFor(x) ? '단지 매칭 안됨 · 눌러서 연결' : '불러오는 중'), e.c ? '' : 'sg warn'); if(!e.c){lc.style.cursor='pointer';lc.addEventListener('click',()=>buyEdit(x.id));} td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
@@ -1243,7 +1284,8 @@ function buyRender() {
     if(hist.length>1){const d=document.createElement('div');d.className='hist';d.textContent=hist.slice(-3).map(h=>String(h.at).slice(0,10)+' '+(Number(h.price)/10000).toFixed(2)+'억').join(' → ');hc.appendChild(d);}
     const bc=td(e.buildingScore==null?'수집 대기':e.buildingScore+'점', (e.buildingScore>=70?'sg good ':e.buildingScore!=null&&e.buildingScore<45?'sg warn ':'')+'buy-table-hide-mobile');
     if(e.c && e.c.building){const d=document.createElement('div');d.className='hist';d.textContent=buildingText(e.c.building);bc.appendChild(d);}
-    td(e.score+' · '+e.label+' (가격 '+e.priceScore+')','score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
+    if (isWatch(x)) td(e.lastGap==null?'관심 단지':'관심 단지 · 목표가가 최근 실거래 대비 '+sgn1(e.lastGap)+(e.lastGap>=0?' (도달)':''), 'score '+(e.lastGap!=null&&e.lastGap>=0?'good':'warn'));
+    else td(e.score+' · '+e.label+' (가격 '+e.priceScore+')','score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
     const act=td('');
     const edit=document.createElement('button'); edit.type='button'; edit.className='mini-btn'; edit.textContent='수정'; edit.addEventListener('click',()=>buyEdit(x.id)); act.appendChild(edit);
     const del=document.createElement('button'); del.type='button'; del.className='mini-btn'; del.textContent='삭제'; del.style.marginLeft='4px'; del.addEventListener('click',()=>buyDelete(x.id)); act.appendChild(del);
