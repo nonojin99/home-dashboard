@@ -45,7 +45,7 @@ def build_mail(data, now):
     h.append("</table>")
     h.append("<p style='color:#6e6e73;font-size:12px'>신호 = 중위가 3개월 변화(±1%)와 거래량의 직전 평균 대비(±10%)를 조합한 단순 규칙입니다. "
              "중위가는 단지 구성에 따라 출렁이니 방향만 참고하세요.</p>")
-    h.append("<h3 style='margin:18px 0 4px'>신고가 대비 낮게 거래된 단지 (8~9억 · 2015년 이후)</h3>")
+    h.append("<h3 style='margin:18px 0 4px'>신고가보다 10% 이상 낮게 거래된 단지 (6~9억 · 2015년 이후)</h3>")
     if drop_rows:
         h.append("<table style='border-collapse:collapse;font-size:13px'><tr>" + "".join(
             f"<th style='{th}color:#6e6e73'>{c}</th>" for c in ["단지", "동", "최근 거래가", "신고가", "신고가 대비", "거래일"]) + "</tr>")

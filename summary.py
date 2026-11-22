@@ -88,11 +88,11 @@ def history(data, now):
         return None, None, None
 
 
-def drops(data, months=3, min_drop=5, limit=12):
-    """84㎡·8~9억·2015년 이후에서 단지별 최근 거래가가 신고가 대비 낮은 순."""
+def drops(data, months=3, min_drop=10, limit=15):
+    """84㎡·6~9억·2015년 이후에서 단지별 최근 거래가가 신고가 대비 낮은 순."""
     try:
         codes = sorted({c for a in data["areas"] for c in a["codes"]})
-        return sb_get("rpc/search_trades", {"p_sgg": codes, "p_min": 80000, "p_max": 90000, "p_build_min": 2015,
+        return sb_get("rpc/search_trades", {"p_sgg": codes, "p_min": 60000, "p_max": 90000, "p_build_min": 2015,
                                             "p_months": months, "p_min_drop": min_drop, "p_limit": limit})
     except Exception as e:
         print("신고가 비교 조회 실패:", e, file=sys.stderr)
@@ -101,5 +101,5 @@ def drops(data, months=3, min_drop=5, limit=12):
 
 def make(data, now):
     since, progress, eta = history(data, now)
-    return {"rows": area_rows(data), "rateLine": rate_line(data.get("rates")), "drops": drops(data), "fresh": drops(data, 1, 10, 12),
+    return {"rows": area_rows(data), "rateLine": rate_line(data.get("rates")), "drops": drops(data), "fresh": drops(data, 1, 10, 15),
             "since": since, "progress": progress, "etaDays": eta}
