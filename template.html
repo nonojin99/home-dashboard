@@ -103,6 +103,16 @@ th.sortable::after{content:attr(data-dir);font-size:9px;margin-left:2px;color:va
 #mRes tbody tr.sel{background:var(--line)}
 #mRes td.l{text-align:left}
 td.up{color:var(--up)}td.dn2{color:var(--down)}
+.buy-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.buy-grid label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.buy-grid input,.buy-grid textarea{font:inherit;font-size:16px;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg)}
+.buy-grid textarea{min-height:74px;resize:vertical}.buy-grid .wide{grid-column:1/-1}
+.buy-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.buy-actions button,.mini-btn{font:inherit;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg);padding:7px 10px;cursor:pointer}.buy-actions .primary{background:var(--a);border-color:var(--a);color:#fff}
+.score{font-weight:700}.score.good{color:var(--down)}.score.bad{color:var(--up)}.score.warn{color:var(--b)}
+.buy-note{font-size:12px;color:var(--muted);margin-top:6px}.hist{font-size:12px;color:var(--muted);white-space:normal;min-width:180px}
+.buy-sync{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:8px 0 12px}.buy-sync label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px;min-width:220px}.buy-sync input{font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg)}
+#tabBuy{display:flex;flex-direction:column;gap:22px}#tabBuy[hidden]{display:none}
+@media(max-width:560px){.buy-grid{grid-template-columns:1fr}.buy-grid .wide{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -112,7 +122,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <div class="muted">국토교통부 실거래 신고 기준 · 최근 6개월 · <span id="updated"></span> 갱신</div>
   </header>
 
-  <nav class="tabs"><button class="tab on" data-tab="Find">단지 찾기</button><button class="tab" data-tab="Dash">시장 흐름</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
+  <nav class="tabs"><button class="tab on" data-tab="Find">단지 찾기</button><button class="tab" data-tab="Buy">관심 매물</button><button class="tab" data-tab="Dash">시장 흐름</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
 <div id="tabFind">
   <section id="mapSec">
     <h2>단지 찾기 <span class="muted">· 조건에 맞는 단지를 지도와 목록으로</span></h2>
@@ -141,6 +151,45 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
       <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="region">지역</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="gap">기대가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th></tr></thead>
       <tbody id="mResRows"></tbody>
     </table></div>
+  </section>
+</div>
+<div id="tabBuy" hidden>
+  <section>
+    <h2>관심 매물 <span class="muted">· 호가를 기록하고 실거래와 자동 비교</span></h2>
+    <p class="muted">직접 확인한 매물이나 정식으로 제공받은 매물을 등록합니다. Supabase PIN을 연결하면 PC·휴대폰에서 같은 목록과 가격 이력을 공유합니다.</p>
+    <div class="buy-sync">
+      <label>Supabase 개인 PIN<input id="buyPin" type="password" inputmode="text" autocomplete="current-password" placeholder="supabase_listings.sql에 설정한 PIN"></label>
+      <button type="button" id="buyConnect" class="mini-btn">서버 동기화</button>
+      <button type="button" id="buyDisconnect" class="mini-btn" hidden>연결 해제</button>
+      <span class="muted" id="buySyncMsg">로컬 저장 모드</span>
+    </div>
+    <form id="buyForm">
+      <input id="buyId" type="hidden">
+      <div class="buy-grid">
+        <label class="wide">단지명<input id="buyApt" list="mapList" required placeholder="예: 동탄역 시범한화 꿈에그린 프레스티지"></label>
+        <label>법정동<input id="buyDong" placeholder="예: 청계동"></label>
+        <label>호가 (억)<input id="buyPrice" type="number" step="0.01" min="0" required placeholder="예: 8.20"></label>
+        <label>전용면적 (㎡)<input id="buyArea" type="number" step="0.01" value="84" placeholder="84"></label>
+        <label>층<input id="buyFloor" type="number" step="1" placeholder="예: 12"></label>
+        <label class="wide">매물 링크<input id="buyUrl" type="url" placeholder="https://..."></label>
+        <label class="wide">메모<textarea id="buyMemo" placeholder="동향, 수리 상태, 중개사 설명, 협상 가능 금액 등"></textarea></label>
+      </div>
+      <div class="buy-actions"><button class="primary" type="submit" id="buySave">매물 저장</button><button type="button" id="buyCancel" hidden>수정 취소</button><button type="button" id="buyExport">백업 JSON</button><label class="mini-btn" style="display:inline-flex;align-items:center">백업 불러오기<input id="buyImport" type="file" accept="application/json" hidden></label></div>
+      <div class="buy-note">매수점수는 호가와 최근 실거래·최근 6개월 중위가·신고가의 차이를 단순 규칙으로 계산합니다. 실제 매수 결정 전에는 동·층·향·수리비·권리관계를 별도로 확인하세요.</div>
+    </form>
+  </section>
+  <section>
+    <div class="cards" id="buyCards">
+      <div class="card"><div class="label">등록 매물</div><div class="value" id="buyCount">0</div><div class="sub">현재 추적 중</div></div>
+      <div class="card"><div class="label">가장 높은 매수점수</div><div class="value" id="buyBest">—</div><div class="sub" id="buyBestName">—</div></div>
+      <div class="card"><div class="label">가격 인하 매물</div><div class="value" id="buyCuts">0</div><div class="sub">최초 등록가 대비</div></div>
+      <div class="card"><div class="label">기대가보다 싼 매물</div><div class="value" id="buyCheap">0</div><div class="sub">6개월 중위가 대비 -5% 이하</div></div>
+    </div>
+  </section>
+  <section>
+    <h2>매물 비교표</h2>
+    <div class="tw"><table id="buyTable"><thead><tr><th class="l">단지 / 메모</th><th>호가</th><th>최근 실거래</th><th>6개월 기대가</th><th>기대가 대비</th><th>신고가 대비</th><th>가격 변화</th><th>매수점수</th><th>관리</th></tr></thead><tbody id="buyRows"></tbody></table></div>
+    <p class="muted" id="buyEmpty">등록한 관심 매물이 없습니다. 단지 찾기에서 단지를 선택한 뒤 ‘관심 매물에 추가’를 눌러도 됩니다.</p>
   </section>
 </div>
 <div id="tabDash" hidden>
@@ -519,6 +568,7 @@ async function mapLoad() {
   data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); });
   mapState.data = data;
   mapState.loadKey = key;
+  if (typeof buyRender === 'function') buyRender();
   const dl = $('mapList');
   dl.replaceChildren();
   [...new Set(data.map((c) => c.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
@@ -588,6 +638,10 @@ async function showInfo(c, zoneName) {
     if (i) a.style.marginLeft = '12px';
     links.appendChild(a);
   });
+  const addBuy = document.createElement('button');
+  addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '12px'; addBuy.textContent = '관심 매물에 추가';
+  addBuy.addEventListener('click', () => prefillListing(c));
+  links.appendChild(addBuy);
   box.append(title, meta, stat, fair, links, wrap);
   try {
     const [lo, hi] = sizeRange();
@@ -758,6 +812,151 @@ loadKakao().then(async () => {
   await firstLoad;
   if (mapState.data.length) mapDraw();
 }).catch((e) => { mapMsg(e.message); });
+
+// ---- 관심 매물: localStorage 기본 + PIN 연결 시 Supabase 동기화 ----
+const BUY_KEY = 'buyerListingsV1';
+const BUY_PIN_KEY = 'buyerListingsPinV1';
+let buyListings = [];
+let buyPin = '';
+let buyCloud = false;
+function buyLoad() {
+  try { buyListings = JSON.parse(localStorage.getItem(BUY_KEY) || '[]'); if (!Array.isArray(buyListings)) buyListings = []; } catch (e) { buyListings = []; }
+  try { buyPin = localStorage.getItem(BUY_PIN_KEY) || ''; } catch (e) { buyPin = ''; }
+  $('buyPin').value = buyPin;
+}
+function buyPersist() { try { localStorage.setItem(BUY_KEY, JSON.stringify(buyListings)); } catch (e) {} }
+function buySyncState(text, ok=false) {
+  $('buySyncMsg').textContent = text;
+  $('buySyncMsg').style.color = ok ? 'var(--down)' : '';
+  $('buyDisconnect').hidden = !buyCloud;
+}
+async function buyRpc(name, body) {
+  const res = await fetch(SB_URL + '/rest/v1/rpc/' + name, {
+    method:'POST', headers:{apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'Content-Type':'application/json'},
+    body:JSON.stringify(body),
+  });
+  const data = await res.json().catch(()=>null);
+  if(!res.ok) throw new Error((data && (data.message || data.hint)) || '요청 실패 ('+res.status+')');
+  return data;
+}
+async function buyCloudLoad(pin=buyPin) {
+  const rows = await buyRpc('buyer_listings_list', {p_pin:pin});
+  buyListings = Array.isArray(rows) ? rows.map(x=>({...x, area:x.area==null?84:Number(x.area), history:Array.isArray(x.history)?x.history:[]})) : [];
+  buyPersist(); buyCloud = true; buyPin = pin;
+  try { localStorage.setItem(BUY_PIN_KEY, pin); } catch(e) {}
+  $('buyPin').value = pin; buySyncState('Supabase 동기화됨 · '+buyListings.length+'개', true); buyRender();
+}
+async function buyCloudUpsert(x) {
+  return buyRpc('buyer_listing_upsert', {p_pin:buyPin,p_id:x.id||null,p_apt:x.apt,p_dong:x.dong||'',p_price:Number(x.price),p_area:Number(x.area)||84,p_floor:x.floor==null?null:Number(x.floor),p_url:x.url||'',p_memo:x.memo||'',p_source:x.source||'manual',p_source_id:x.source_id||null,p_observed_at:new Date().toISOString()});
+}
+async function buyMigrateLocal(rows) {
+  for (const x of rows) {
+    const hist = Array.isArray(x.history) && x.history.length ? x.history : [{at:x.created_at||new Date().toISOString(),price:x.price}];
+    const first = {...x, price:Number(hist[0].price)||Number(x.price)};
+    await buyCloudUpsert(first);
+    for (const h of hist.slice(1)) if(Number(h.price)>0) await buyRpc('buyer_listing_upsert',{p_pin:buyPin,p_id:x.id,p_apt:x.apt,p_dong:x.dong||'',p_price:Number(h.price),p_area:Number(x.area)||84,p_floor:x.floor==null?null:Number(x.floor),p_url:x.url||'',p_memo:x.memo||'',p_source:x.source||'manual',p_source_id:x.source_id||null,p_observed_at:h.at||new Date().toISOString()});
+    if(Number(x.price)!==Number(hist[hist.length-1].price)) await buyCloudUpsert(x);
+  }
+}
+function buyComplex(x) {
+  const apt = (x.apt || '').trim().toLowerCase(), dong = (x.dong || '').trim();
+  let rows = mapState.data.filter((c) => c.apt.toLowerCase() === apt && (!dong || c.dong === dong));
+  if (!rows.length) rows = mapState.data.filter((c) => c.apt.toLowerCase().includes(apt) || apt.includes(c.apt.toLowerCase()));
+  return rows.sort((a,b) => Math.abs((a.last_price||0) - x.price) - Math.abs((b.last_price||0) - x.price))[0] || null;
+}
+const pctGap = (a, b) => (!a || !b ? null : Math.round((a / b - 1) * 1000) / 10);
+function buyEval(x) {
+  const c = buyComplex(x), p = Number(x.price) || 0;
+  const fairGap = c && c.med6 ? pctGap(p, c.med6) : null;
+  const lastGap = c && c.last_price ? pctGap(p, c.last_price) : null;
+  const highGap = c && c.high ? pctGap(p, c.high) : null;
+  let score = 50;
+  if (fairGap != null) score += Math.max(-25, Math.min(30, -fairGap * 2.2));
+  if (lastGap != null) score += Math.max(-12, Math.min(15, -lastGap * 1.2));
+  if (highGap != null) score += Math.max(0, Math.min(10, -highGap * .45));
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const label = score >= 80 ? '강한 후보' : score >= 65 ? '매수 검토' : score >= 50 ? '관찰' : '비쌈';
+  return {c, fairGap, lastGap, highGap, score, label};
+}
+function buyReset() {
+  ['buyId','buyApt','buyDong','buyPrice','buyFloor','buyUrl','buyMemo'].forEach((id) => { $(id).value = ''; });
+  $('buyArea').value = '84'; $('buyCancel').hidden = true; $('buySave').textContent = '매물 저장';
+}
+function prefillListing(c) {
+  document.querySelectorAll('.tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'Buy'));
+  ['Find','Buy','Dash','Sum'].forEach((n) => { $('tab' + n).hidden = n !== 'Buy'; });
+  buyReset(); $('buyApt').value = c.apt; $('buyDong').value = c.dong; $('buyArea').value = Math.round(((sizeRange()[0] + sizeRange()[1]) / 2) * 10) / 10;
+  $('buyPrice').value = c.last_price ? (c.last_price / 10000).toFixed(2) : ''; $('buyPrice').focus();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+function buyRender() {
+  const tb = $('buyRows'); tb.replaceChildren();
+  let cuts = 0, cheap = 0, best = null;
+  buyListings.slice().sort((a,b) => buyEval(b).score - buyEval(a).score).forEach((x) => {
+    const e = buyEval(x), hist = x.history || [], first = hist.length ? Number(hist[0].price) : x.price, chg = pctGap(x.price, first);
+    if (chg != null && chg < 0) cuts++; if (e.fairGap != null && e.fairGap <= -5) cheap++;
+    if (!best || e.score > best.eval.score) best = {x, eval:e};
+    const tr = document.createElement('tr');
+    const td = (text, cls) => { const d=document.createElement('td'); d.textContent=text; if(cls)d.className=cls; tr.appendChild(d); return d; };
+    const name = td('', 'l');
+    const strong = document.createElement('strong'); strong.textContent = x.apt + (x.dong ? ' · ' + x.dong : ''); name.appendChild(strong);
+    if (x.memo) { const m=document.createElement('div'); m.className='hist'; m.textContent=x.memo; name.appendChild(m); }
+    if (x.url) { const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='매물 링크 ↗'; a.style.display='block'; name.appendChild(a); }
+    td((x.price/10000).toFixed(2)+'억'); td(e.c ? fmtEok(e.c.last_price) : '단지 매칭 안됨'); td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—');
+    td(e.fairGap==null?'—':sgn1(e.fairGap), e.fairGap!=null&&e.fairGap<=-5?'sg good':e.fairGap!=null&&e.fairGap>=5?'sg warn':'');
+    td(e.highGap==null?'—':sgn1(e.highGap), e.highGap!=null&&e.highGap<=-10?'sg good':'');
+    const hc=td(chg==null?'—':sgn1(chg), chg<0?'sg good':chg>0?'sg warn':'');
+    if(hist.length>1){const d=document.createElement('div');d.className='hist';d.textContent=hist.slice(-3).map(h=>String(h.at).slice(0,10)+' '+(Number(h.price)/10000).toFixed(2)+'억').join(' → ');hc.appendChild(d);}
+    td(e.score+' · '+e.label,'score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
+    const act=td('');
+    const edit=document.createElement('button'); edit.type='button'; edit.className='mini-btn'; edit.textContent='수정'; edit.addEventListener('click',()=>buyEdit(x.id)); act.appendChild(edit);
+    const del=document.createElement('button'); del.type='button'; del.className='mini-btn'; del.textContent='삭제'; del.style.marginLeft='4px'; del.addEventListener('click',()=>buyDelete(x.id)); act.appendChild(del);
+    tb.appendChild(tr);
+  });
+  $('buyCount').textContent = buyListings.length; $('buyCuts').textContent = cuts; $('buyCheap').textContent = cheap;
+  $('buyBest').textContent = best ? best.eval.score : '—'; $('buyBestName').textContent = best ? best.x.apt + ' · ' + best.eval.label : '—'; $('buyEmpty').hidden = !!buyListings.length;
+}
+function buyEdit(id) {
+  const x=buyListings.find(v=>v.id===id); if(!x)return;
+  $('buyId').value=x.id; $('buyApt').value=x.apt||''; $('buyDong').value=x.dong||''; $('buyPrice').value=(x.price/10000).toFixed(2); $('buyArea').value=x.area||84; $('buyFloor').value=x.floor??''; $('buyUrl').value=x.url||''; $('buyMemo').value=x.memo||'';
+  $('buyCancel').hidden=false; $('buySave').textContent='수정 저장'; $('buyApt').focus(); window.scrollTo({top:0,behavior:'smooth'});
+}
+async function buyDelete(id) {
+  if(!confirm('이 관심 매물을 삭제할까요? 가격 이력도 함께 삭제됩니다.'))return;
+  try {
+    if(buyCloud){ await buyRpc('buyer_listing_delete',{p_pin:buyPin,p_id:id}); await buyCloudLoad(); }
+    else { buyListings=buyListings.filter(x=>x.id!==id); buyPersist(); buyRender(); }
+  } catch(e){ alert('삭제 실패: '+e.message); }
+}
+$('buyCancel').addEventListener('click', buyReset);
+$('buyForm').addEventListener('submit',async(ev)=>{
+  ev.preventDefault(); const priceEok=parseFloat($('buyPrice').value); if(!(priceEok>0))return;
+  const id=$('buyId').value, now=new Date().toISOString(), price=Math.round(priceEok*10000);
+  const base={id:id||null,apt:$('buyApt').value.trim(),dong:$('buyDong').value.trim(),price,area:parseFloat($('buyArea').value)||84,floor:$('buyFloor').value===''?null:parseInt($('buyFloor').value,10),url:$('buyUrl').value.trim(),memo:$('buyMemo').value.trim(),source:'manual',source_id:null,updated_at:now};
+  try {
+    if(buyCloud){ $('buySave').disabled=true; await buyCloudUpsert(base); await buyCloudLoad(); }
+    else if(id){const x=buyListings.find(v=>v.id===id); if(!x)return; x.history=x.history||[]; if(x.price!==price)x.history.push({at:now,price}); Object.assign(x,base,{id}); buyPersist(); buyRender();}
+    else {base.id='m'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);base.created_at=now;base.history=[{at:now,price}];buyListings.push(base);buyPersist();buyRender();}
+    buyReset();
+  } catch(e){ alert('저장 실패: '+e.message); }
+  finally{$('buySave').disabled=false;}
+});
+$('buyConnect').addEventListener('click',async()=>{
+  const pin=$('buyPin').value.trim(); if(!pin){alert('Supabase PIN을 입력하세요.');return;}
+  const local=buyListings.slice(); buySyncState('서버 확인 중…');
+  try {
+    buyPin=pin; const server=await buyRpc('buyer_listings_list',{p_pin:pin});
+    buyCloud=true; try{localStorage.setItem(BUY_PIN_KEY,pin);}catch(e){}
+    if((server||[]).length===0 && local.length && confirm('서버 목록이 비어 있습니다. 현재 이 기기의 '+local.length+'개 매물과 가격 이력을 서버로 올릴까요?')) await buyMigrateLocal(local);
+    await buyCloudLoad(pin);
+  } catch(e){buyCloud=false;buySyncState('연결 실패 · PIN/SQL 설치 확인');alert('Supabase 연결 실패: '+e.message);}
+});
+$('buyDisconnect').addEventListener('click',()=>{buyCloud=false;buyPin='';$('buyPin').value='';try{localStorage.removeItem(BUY_PIN_KEY);}catch(e){}buySyncState('로컬 저장 모드');});
+$('buyExport').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify({version:2,exported_at:new Date().toISOString(),storage:buyCloud?'supabase':'local',listings:buyListings},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='home-dashboard-listings-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+});
+$('buyImport').addEventListener('change',async(ev)=>{const f=ev.target.files&&ev.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const rows=Array.isArray(d)?d:d.listings;if(!Array.isArray(rows))throw new Error('형식 오류');if(!confirm(rows.length+'개 매물을 '+(buyCloud?'Supabase에 추가/갱신':'현재 로컬 목록으로 교체')+'할까요?'))return;if(buyCloud){await buyMigrateLocal(rows);await buyCloudLoad();}else{buyListings=rows;buyPersist();buyRender();}}catch(e){alert('백업 파일을 읽지 못했습니다: '+e.message);}finally{ev.target.value='';}});
+buyLoad(); buyRender(); buySyncState(buyPin?'PIN 저장됨 · 서버 동기화 버튼을 누르세요':'로컬 저장 모드');
 
 // ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
 const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
@@ -949,7 +1148,7 @@ loadNotes();
   const g = (id) => document.getElementById(id);
   document.querySelectorAll('.tabs .tab').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('.tabs .tab').forEach((x) => x.classList.toggle('on', x === b));
-    ['Find', 'Dash', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
+    ['Find', 'Buy', 'Dash', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
     if (b.dataset.tab === 'Find') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
     if (b.dataset.tab === 'Dash') { render(sel.value); rateChart(); }  // 숨겨진 상태에서는 차트 폭을 잴 수 없다
   }));

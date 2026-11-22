@@ -63,6 +63,20 @@ jobs:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
           MAIL_TO: ${{ secrets.MAIL_TO }}
         run: python alerts.py
+      - name: 관심 매물 알림 이력 캐시
+        uses: actions/cache@v4
+        with:
+          path: listings_alerts_seen.json
+          key: listing-alerts-${{ github.run_id }}
+          restore-keys: listing-alerts-
+      - name: 관심 매물 가격 인하·저평가 알림
+        continue-on-error: true
+        env:
+          BUYER_LISTINGS_PIN: ${{ secrets.BUYER_LISTINGS_PIN }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python listing_alerts.py
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
