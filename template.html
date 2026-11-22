@@ -94,9 +94,14 @@ td.sg{font-weight:600}
 td.sg.good{color:var(--down)}td.sg.bad{color:var(--up)}td.sg.warn{color:var(--b)}
 th.sortable{cursor:pointer;user-select:none}
 th.sortable::after{content:attr(data-dir);font-size:9px;margin-left:2px;color:var(--a)}
-#tabCx{display:flex;flex-direction:column;gap:22px}
-#tabCx[hidden]{display:none}
-#tabCx .tw{overflow-x:auto}
+#tabFind{display:flex;flex-direction:column;gap:22px}
+#tabFind[hidden]{display:none}
+#tabFind .tw{overflow-x:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.chips .tab{font-size:13px;padding:6px 11px}
+#mRes tbody tr{cursor:pointer}
+#mRes tbody tr.sel{background:var(--line)}
+#mRes td.l{text-align:left}
 td.up{color:var(--up)}td.dn2{color:var(--down)}
 </style>
 </head>
@@ -107,8 +112,38 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <div class="muted">국토교통부 실거래 신고 기준 · 최근 6개월 · <span id="updated"></span> 갱신</div>
   </header>
 
-  <nav class="tabs"><button class="tab on" data-tab="Dash">대시보드</button><button class="tab" data-tab="Cx">단지 현황</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
-<div id="tabDash">
+  <nav class="tabs"><button class="tab on" data-tab="Find">단지 찾기</button><button class="tab" data-tab="Dash">시장 흐름</button><button class="tab" data-tab="Sum">요약·신고가</button></nav>
+<div id="tabFind">
+  <section id="mapSec">
+    <h2>단지 찾기 <span class="muted">· 조건에 맞는 단지를 지도와 목록으로</span></h2>
+    <div class="muted">지역 (여러 개 선택 가능 · 아무것도 안 고르면 전체)</div>
+    <div class="chips" id="mChips"></div>
+    <div class="sf">
+      <label>단지 검색 (자동 완성 · 엔터로 이동)<input id="mapQ" list="mapList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="mapList"></datalist></label>
+    </div>
+    <details id="mapFilters"><summary>조건 필터 <span class="muted" id="mFiltSum"></span></summary>
+    <div class="sf" style="margin-top:8px">
+      <label>전용면적<select id="mSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option><option value="0-999">전체 면적 (신고가에 평형이 섞임)</option></select></label>
+      <label>최근 거래 시점<select id="mMonths"><option value="1">1개월 이내</option><option value="3" selected>3개월 이내</option><option value="6">6개월 이내</option><option value="12">12개월 이내</option></select></label>
+      <label>가격(억) 이상<input id="mMin" type="number" step="0.1" placeholder="제한 없음"></label>
+      <label>가격(억) 이하<input id="mMax" type="number" step="0.1" placeholder="제한 없음"></label>
+      <label>준공 연도 이후<input id="mBuilt" type="number" step="1" placeholder="제한 없음"></label>
+      <label>추천 구분<select id="mReco"><option value="all">전체</option><option value="drop10">신고가보다 10% 이상 싼 단지</option><option value="fair">기대가보다 5% 이상 싼 단지</option><option value="near">신고가 근처 (3% 이내)</option><option value="down">직전 거래보다 내린 단지</option><option value="hot">거래 활발 (30일 건수 증가)</option></select></label>
+      <label>핀 색 기준<select id="mColor"><option value="drop" selected>신고가 대비 하락률</option><option value="zone">시·구</option></select></label>
+    </div>
+    </details>
+    <div style="margin:8px 0"><b id="mapCount"></b> <button class="tab" id="mapReset" style="margin-left:6px">조건 초기화</button></div>
+    <div class="map-legend" id="mapLegend"></div>
+    <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
+    <div class="map-info" id="mapInfo"></div>
+    <h2 style="margin-top:18px">결과 목록 <span class="muted" id="mResNote">· 행을 누르면 지도에서 보여줍니다 · 열 제목으로 정렬</span></h2>
+    <div class="tw"><table id="mRes">
+      <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="region">지역</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="gap">기대가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th></tr></thead>
+      <tbody id="mResRows"></tbody>
+    </table></div>
+  </section>
+</div>
+<div id="tabDash" hidden>
   <select id="area" aria-label="지역"></select>
 
   <p class="lede" id="lede"></p>
@@ -120,28 +155,6 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <div class="card"><div class="label">84㎡ 전세가율 · 지난달</div><div class="value" id="cRatio">—</div><div class="sub">전세 중위가 ÷ 매매 중위가</div></div>
   </section>
 
-  <section id="mapSec">
-    <h2>단지 지도</h2>
-    <div class="muted">핀 숫자는 단지별 가장 최근 거래가(억)입니다. 누르면 거래 내역이 보입니다.</div>
-    <div class="map-legend" id="mapLegend"></div>
-    <div class="map-box"><div id="map" style="position:absolute;inset:0"></div><div class="map-msg" id="mapMsg">지도를 불러오는 중</div></div>
-    <div class="map-info" id="mapInfo"></div>
-    <div style="margin:6px 0"><button class="tab" id="mapAll">전체 구역 보기</button> <button class="tab" id="mapReset">필터 초기화</button> <span class="muted" id="mapCount"></span> <span class="muted" id="mapAllNote"></span></div>
-    <div class="sf" style="margin-top:8px">
-      <label>단지 검색 (자동 완성 · 엔터로 이동)<input id="mapQ" list="mapList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="mapList"></datalist></label>
-    </div>
-    <details id="mapFilters" style="margin-top:6px"><summary>조건 필터 (면적 · 금액 · 추천 구분 · 핀 색 기준)</summary>
-    <div class="sf" style="margin-top:8px">
-      <label>전용면적<select id="mSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option></select></label>
-      <label>최근 거래 시점<select id="mMonths"><option value="1">1개월 이내</option><option value="3" selected>3개월 이내</option><option value="6">6개월 이내</option><option value="12">12개월 이내</option></select></label>
-      <label>가격(억) 이상<input id="mMin" type="number" step="0.1" placeholder="제한 없음"></label>
-      <label>가격(억) 이하<input id="mMax" type="number" step="0.1" placeholder="제한 없음"></label>
-      <label>준공 연도 이후<input id="mBuilt" type="number" step="1" placeholder="제한 없음"></label>
-      <label>추천 구분<select id="mReco"><option value="all">전체</option><option value="drop10">신고가보다 10% 이상 싼 단지</option><option value="fair">기대가보다 5% 이상 싼 단지</option><option value="near">신고가 근처 (3% 이내)</option><option value="down">직전 거래보다 내린 단지</option><option value="hot">거래 활발 (30일 건수 증가)</option></select></label>
-      <label>핀 색 기준<select id="mColor"><option value="drop" selected>신고가 대비 하락률</option><option value="zone">시·구 / 권역</option></select></label>
-    </div>
-    </details>
-  </section>
 
   <section>
     <h2>월별 매매 거래량</h2>
@@ -188,21 +201,6 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <p>동탄 세부 권역은 법정동으로 묶었습니다. 방교동·금곡동·중동은 동탄 전체에서만 집계됩니다.</p>
     <p>전세는 월세가 0원인 계약만 셌습니다. 기준금리와 매물 수는 이 자료에 없습니다.</p>
   </details>
-</div>
-<div id="tabCx" hidden>
-  <section>
-    <h2>단지 현황 <span class="muted">· 단지별 최근 거래 vs 직전 거래 vs 신고가</span></h2>
-    <div class="sf">
-      <label>지역<select id="cxArea"></select></label>
-      <label>전용면적<select id="cxSize"><option value="83-86" selected>84㎡ (83~86)</option><option value="55-65">59㎡대 (55~65)</option><option value="72-78">74~76㎡ (72~78)</option><option value="95-105">99~101㎡ (95~105)</option><option value="0-999">전체 면적 (신고가에 평형이 섞임)</option></select></label>
-      <label>단지명 검색 (자동 완성)<input id="cxQ" list="cxList" placeholder="예: 포레너스, 예당마을" autocomplete="off"><datalist id="cxList"></datalist></label>
-    </div>
-    <p class="muted" id="cxMsg">지역을 고르면 단지 목록이 나옵니다.</p>
-    <div class="tw"><table id="cxTable" hidden>
-      <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="dong">동</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="chg_prev">직전 대비</th><th class="sortable" data-k="high">신고가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="med6">기대가(6개월 중위)</th><th class="sortable" data-k="gap">기대가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th></tr></thead>
-      <tbody id="cxRows"></tbody>
-    </table></div>
-  </section>
 </div>
 <div id="tabSum" hidden>
   <div class="note" id="sumNote"></div>
@@ -372,7 +370,6 @@ function render(key) {
   });
   const rt = $('recentRows');
   rt.replaceChildren();
-  if (window.__updateMap) window.__updateMap(a);
   a.recent.forEach((r) => {
     const tr = document.createElement('tr');
     [[r.date, true], [r.apt, true], [r.dong, true], [r.floor], [r.built], [eok(r.price)]].forEach(([t, l]) => cell(tr, t, l));
@@ -393,7 +390,6 @@ try { saved = localStorage.getItem('area'); } catch (e) {}
 if (saved && DATA.areas.some((a) => a.key === saved)) sel.value = saved;
 sel.addEventListener('change', () => {
   try { localStorage.setItem('area', sel.value); } catch (e) {}
-  setAll(false);  // 지역을 직접 고르면 지도도 그 지역만 보여준다
   render(sel.value);
 });
 $('updated').textContent = DATA.updated;
@@ -404,18 +400,18 @@ window.addEventListener('resize', () => { if (window.innerWidth !== rw) { rw = w
 
 // ---- 단지 지도 (카카오맵): 주소→좌표 변환은 브라우저에서 그때그때 하고 저장하지 않는다 ----
 const KAKAO_JS_KEY = 'ddc0cd6a35c21ba756408afcf620e1f8';
-const ZONE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f'];
-const mapState = {map: null, overlays: [], area: null, geo: new Map(), token: 0, selected: null, all: true, data: [], loadKey: '', q: '', pins: []};
+const mapState = {map: null, overlays: [], geo: new Map(), token: 0, selected: null, data: [], loadKey: '', q: '', pins: [], regions: new Set(), list: [], sort: {k: 'drop_pct', dir: -1}, selKey: ''};
 
-// 권역 이름과 색: 시·구 전체를 뜻하는 지역(동 목록 없음, 동탄구 전체 제외)과 동탄 세부 권역
-// 지도 색 구역: 세부 권역이 있는 시·구는 세부 권역만, 없는 시·구는 그 전체를 한 구역으로
-const overlaps = (a, b) => a.codes.some((c) => b.codes.includes(c));
-const ZONES = DATA.areas.filter((a) => a.dongs || !DATA.areas.some((b) => b.dongs && overlaps(a, b)));
-const zoneOf = (code, dong) => ZONES.find((z) => z.codes.includes(code) && (!z.dongs || z.dongs.includes(dong)));
+// 지역 칩 = 대시보드 지역 그룹(화성 동탄, 수원, …). 그룹에 속한 시·구 코드 전체가 대상이다.
 const CODE_ORDER = [...new Set(DATA.areas.flatMap((a) => a.codes))];
+const GROUPS = [...new Set(DATA.areas.map((a) => a.group))];
+const GROUP_CODES = Object.fromEntries(GROUPS.map((g) => [g, [...new Set(DATA.areas.filter((a) => a.group === g).flatMap((a) => a.codes))]]));
+const groupOfCode = (c) => GROUPS.find((g) => GROUP_CODES[g].includes(c)) || '';
 const CODE_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626', '#4d7c0f', '#0f172a', '#ea580c', '#9333ea', '#0d9488'];
 const codeName = (c) => (DATA.sggNames[c] || c).split(' ').slice(-1)[0];
-const zoneColor = (z) => (z ? ZONE_COLORS[ZONES.indexOf(z) % ZONE_COLORS.length] : '#6b7280');
+const codeColor = (c) => CODE_COLORS[CODE_ORDER.indexOf(c) % CODE_COLORS.length];
+const regionLabel = (c) => { const g = groupOfCode(c), n = codeName(c); return g.endsWith(n) || g.includes(n) ? g : (g ? g.split(' ')[0] + ' ' + n : n); };
+const ckey = (c) => c.sgg_cd + '|' + c.dong + '|' + c.jibun + '|' + c.apt;
 
 function mapMsg(text) {
   $('mapMsg').textContent = text;
@@ -474,23 +470,53 @@ function matchQ(c, q) {
   return !s || c.apt.toLowerCase().includes(s);
 }
 
-function mapScope() {
-  if (mapState.all) return {codes: CODE_ORDER, dongs: null};
-  const a = mapState.area;
-  return {codes: a.codes, dongs: a.dongs && a.dongs.length ? a.dongs : null};
+
+// 필터 상태 저장: 다시 열어도 같은 조건으로
+const F_IDS = ['mSize', 'mMonths', 'mMin', 'mMax', 'mBuilt', 'mReco', 'mColor'];
+function saveFilters() {
+  try { localStorage.setItem('find', JSON.stringify({f: Object.fromEntries(F_IDS.map((id) => [id, $(id).value])), r: [...mapState.regions], s: mapState.sort})); } catch (e) {}
+}
+function restoreFilters() {
+  try {
+    const v = JSON.parse(localStorage.getItem('find') || 'null');
+    if (!v) return;
+    F_IDS.forEach((id) => { if (v.f && v.f[id] != null && v.f[id] !== '' && ($(id).tagName !== 'SELECT' || [...$(id).options].some((o) => o.value === v.f[id]))) $(id).value = v.f[id]; });
+    (v.r || []).filter((g) => GROUPS.includes(g)).forEach((g) => mapState.regions.add(g));
+    if (v.s && v.s.k) mapState.sort = v.s;
+  } catch (e) {}
+}
+
+function drawChips() {
+  const box = $('mChips');
+  box.replaceChildren();
+  const mk = (label, on, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'tab' + (on ? ' on' : ''); b.textContent = label; b.addEventListener('click', fn); box.appendChild(b); };
+  mk('전체', !mapState.regions.size, () => { mapState.regions.clear(); onChange(); });
+  GROUPS.forEach((g) => mk(g, mapState.regions.has(g), () => { mapState.regions.has(g) ? mapState.regions.delete(g) : mapState.regions.add(g); onChange(); }));
+}
+
+function filterSummary() {
+  const p = [], [lo, hi] = sizeRange(), mn = numVal('mMin'), mx = numVal('mMax'), bt = numVal('mBuilt');
+  p.push($('mSize').selectedOptions[0].textContent.split(' (')[0]);
+  p.push('최근 ' + $('mMonths').value + '개월');
+  if (mn != null || mx != null) p.push((mn ?? '') + '~' + (mx ?? '') + '억');
+  if (bt != null) p.push(bt + '년 이후');
+  if ($('mReco').value !== 'all') p.push($('mReco').selectedOptions[0].textContent);
+  $('mFiltSum').textContent = '· ' + p.join(' · ');
 }
 
 async function mapLoad() {
-  const sc = mapScope(), [lo, hi] = sizeRange(), months = +$('mMonths').value;
-  const key = JSON.stringify([sc.codes, sc.dongs, lo, hi, months]);
+  const [lo, hi] = sizeRange(), months = +$('mMonths').value;
+  const key = JSON.stringify([lo, hi, months]);
   if (key === mapState.loadKey) return;
   mapMsg('단지 목록을 불러오는 중…');
+  $('mapCount').textContent = '불러오는 중…';
   const res = await fetch(SB_URL + '/rest/v1/rpc/map_complexes', {
     method: 'POST', headers: {apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json'},
-    body: JSON.stringify({p_sgg: sc.codes, p_dongs: sc.dongs, p_area_min: lo, p_area_max: hi, p_months: months, p_limit: 2000}),
+    body: JSON.stringify({p_sgg: CODE_ORDER, p_dongs: null, p_area_min: lo, p_area_max: hi, p_months: months, p_limit: 2000}),
   });
   const data = await res.json();
   if (!res.ok) throw new Error((data && data.message) || res.status);
+  data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); });
   mapState.data = data;
   mapState.loadKey = key;
   const dl = $('mapList');
@@ -498,15 +524,20 @@ async function mapLoad() {
   [...new Set(data.map((c) => c.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
 }
 
-function mapFiltered() {
+function inRegion(c) {
+  return !mapState.regions.size || [...mapState.regions].some((g) => GROUP_CODES[g].includes(c.sgg_cd));
+}
+
+function mapFiltered(ignoreRegion) {
   const pmin = numVal('mMin'), pmax = numVal('mMax'), built = numVal('mBuilt'), reco = $('mReco').value;
   return mapState.data.filter((c) => {
+    if (!ignoreRegion && !inRegion(c)) return false;
     const p = c.last_price / 10000;
     if (pmin != null && p < pmin) return false;
     if (pmax != null && p > pmax) return false;
     if (built != null && (c.build_year || 0) < built) return false;
     if (reco === 'drop10' && !(c.drop_pct >= 10)) return false;
-    if (reco === 'fair' && !(fairOf(c).gap <= -5)) return false;
+    if (reco === 'fair' && !(c.gap != null && c.gap <= -5)) return false;
     if (reco === 'near' && !(c.drop_pct <= 3)) return false;
     if (reco === 'down' && !(c.chg_prev != null && c.chg_prev < 0)) return false;
     if (reco === 'hot' && !(c.cnt30 > c.cnt30_prev)) return false;
@@ -514,7 +545,7 @@ function mapFiltered() {
   });
 }
 
-function drawLegend() {
+function drawLegend(list) {
   const box = $('mapLegend');
   box.replaceChildren();
   const add = (color, text) => {
@@ -526,12 +557,7 @@ function drawLegend() {
     box.appendChild(s);
   };
   if ($('mColor').value === 'drop') { DROP_LEGEND.forEach(([c, t]) => add(c, t)); return; }
-  if (mapState.all) { CODE_ORDER.forEach((c) => add(CODE_COLORS[CODE_ORDER.indexOf(c) % CODE_COLORS.length], codeName(c))); return; }
-  const a = mapState.area;
-  if (!a) return;
-  const zones = a.dongs ? [a] : ZONES.filter((z) => overlaps(z, a));
-  zones.forEach((z) => add(zoneColor(z), z.name));
-  if (!a.dongs && zones.some((z) => z.dongs)) add(zoneColor(null), '그 외 동');
+  [...new Set((list || []).map((c) => c.sgg_cd))].sort((a, b) => CODE_ORDER.indexOf(a) - CODE_ORDER.indexOf(b)).forEach((c) => add(codeColor(c), regionLabel(c)));
 }
 
 async function showInfo(c, zoneName) {
@@ -584,14 +610,65 @@ async function showInfo(c, zoneName) {
   } catch (e) { wrap.textContent = '거래 내역을 불러오지 못했습니다: ' + e.message; }
 }
 
+
+// 결과 목록: 조건에 맞는 단지 전체. 행을 누르면 지도가 그 단지로 이동한다.
+const RES_MAX = 300;
+function drawList() {
+  const {k, dir} = mapState.sort;
+  const rows = mapState.list.slice().sort((x, y) => {
+    const a = x[k], b = y[k];
+    if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1;
+    return (typeof a === 'string' ? a.localeCompare(b, 'ko') : a - b) * dir;
+  });
+  document.querySelectorAll('#mRes th.sortable').forEach((h) => { h.dataset.dir = h.dataset.k === k ? (dir > 0 ? '▲' : '▼') : ''; });
+  const tb = $('mResRows');
+  tb.replaceChildren();
+  rows.slice(0, RES_MAX).forEach((c) => {
+    const tr = document.createElement('tr');
+    if (ckey(c) === mapState.selKey) tr.className = 'sel';
+    const td = (t, cls) => { const e = document.createElement('td'); e.textContent = t; if (cls) e.className = cls; tr.appendChild(e); return e; };
+    td((c.dong === '석우동' && !c.apt.startsWith('동탄') ? '예당마을 ' : '') + c.apt + ' · ' + c.dong, 'l');
+    td(c.region); td(c.build_year || '—');
+    td(fmtEok(c.last_price) + ' (' + String(c.last_date).slice(2, 7) + ')');
+    td(c.drop_pct > 0 ? '-' + c.drop_pct + '%' : '신고가', c.drop_pct >= 10 ? 'sg good' : c.drop_pct <= 0 ? 'sg warn' : '');
+    td(c.gap == null ? '자료 부족' : sgn1(c.gap) + ' ' + c.label, c.label === '싸다' ? 'sg good' : c.label === '비싸다' ? 'sg warn' : '');
+    td(c.cnt30 + ' (직전 ' + c.cnt30_prev + ')');
+    tr.addEventListener('click', () => focusComplex(c));
+    tb.appendChild(tr);
+  });
+  $('mResNote').textContent = rows.length > RES_MAX ? `· ${rows.length}개 중 정렬 기준 상위 ${RES_MAX}개 · 조건을 더 좁혀 보세요` : '· 행을 누르면 지도에서 보여줍니다 · 열 제목으로 정렬';
+}
+document.querySelectorAll('#mRes th.sortable').forEach((h) => h.addEventListener('click', () => {
+  const k = h.dataset.k;
+  mapState.sort = {k, dir: mapState.sort.k === k ? -mapState.sort.dir : (k === 'apt' || k === 'region' ? 1 : -1)};
+  saveFilters();
+  drawList();
+}));
+
+async function focusComplex(c) {
+  mapState.selKey = ckey(c);
+  drawList();
+  $('mapSec').scrollIntoView({behavior: 'smooth', block: 'start'});
+  const pin = mapState.pins.find((p) => ckey(p.c) === mapState.selKey);
+  if (pin && mapState.map) { mapState.map.setLevel(4); mapState.map.setCenter(pin.latlng); pin.pick(); return; }
+  showInfo(c, c.region);
+  if (!mapState.map) return;
+  const pos = await geocode({dong: c.dong, jibun: c.jibun, apt: c.apt}, c.sgg_cd);
+  if (pos) { mapState.map.setLevel(4); mapState.map.setCenter(new kakao.maps.LatLng(pos.lat, pos.lng)); }
+}
+
 async function mapDraw(focus) {
   const token = ++mapState.token;
   mapState.overlays.forEach((o) => o.setMap(null));
   mapState.overlays = [];
   mapState.pins = [];
-  drawLegend();
   const list = mapFiltered();
-  $('mapCount').textContent = mapState.data.length ? `${list.length}개 단지 (조건 전 ${mapState.data.length}개)` : '';
+  mapState.list = list;
+  drawLegend(list);
+  drawList();
+  filterSummary();
+  const scope = mapState.regions.size ? [...mapState.regions].join(', ') : '전체 지역';
+  $('mapCount').textContent = mapState.data.length ? `${scope} · 조건에 맞는 단지 ${list.length}개` : '';
   if (!mapState.map) return;
   if (!list.length) { mapMsg(mapState.data.length ? '조건에 맞는 단지가 없습니다' : '최근 거래가 있는 단지가 없습니다'); return; }
   mapMsg('단지 위치를 찾는 중 (0/' + list.length + ')');
@@ -607,17 +684,17 @@ async function mapDraw(focus) {
       done++;
       if (pos) {
         found++;
-        const z = mapState.all ? {name: codeName(c.sgg_cd)} : zoneOf(c.sgg_cd, c.dong);
         const el = document.createElement('div');
         el.className = 'map-pin';
-        el.style.background = byDrop ? dropColor(c.drop_pct) : (mapState.all ? CODE_COLORS[CODE_ORDER.indexOf(c.sgg_cd) % CODE_COLORS.length] : zoneColor(z));
+        el.style.background = byDrop ? dropColor(c.drop_pct) : codeColor(c.sgg_cd);
         el.textContent = (c.last_price / 10000).toFixed(1);
         el.title = c.apt;
         const pick = () => {
           if (mapState.selected) mapState.selected.classList.remove('sel');
           el.classList.add('sel');
           mapState.selected = el;
-          showInfo(c, z ? z.name : '');
+          if (mapState.selKey !== ckey(c)) { mapState.selKey = ckey(c); drawList(); }
+          showInfo(c, c.region);
         };
         el.addEventListener('click', pick);
         const latlng = new kakao.maps.LatLng(pos.lat, pos.lng);
@@ -627,7 +704,7 @@ async function mapDraw(focus) {
         mapState.pins.push({c, pick, latlng});
         bounds.extend(latlng);
       }
-      mapMsg(done < list.length ? `단지 위치를 찾는 중 (${done}/${list.length})` : '');
+      mapMsg(done < list.length ? `단지 위치를 찾는 중 (${done}/${list.length}) · 목록은 아래에 이미 나와 있습니다` : '');
     }
   };
   await Promise.all([worker(), worker(), worker(), worker()]);
@@ -642,33 +719,21 @@ async function mapDraw(focus) {
   }
 }
 
-async function updateMap(sel) {
-  mapState.area = sel;
-  drawLegend();
-  if (!mapState.map) return;
-  try { await mapLoad(); } catch (e) { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); return; }
+async function onChange(reload) {
+  drawChips();
+  saveFilters();
+  if (reload) { try { await mapLoad(); } catch (e) { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); $('mapCount').textContent = '불러오기 실패'; return; } }
   await mapDraw();
 }
-window.__updateMap = updateMap;
 
-function setAll(on) {
-  mapState.all = on;
-  $('mapAll').classList.toggle('on', on);
-  $('mapAll').textContent = on ? '선택 지역만 보기' : '전체 구역 보기';
-  $('mapAllNote').textContent = on ? '모든 구역을 한 번에 찾느라 처음에는 1~2분 걸릴 수 있습니다' : '';
-}
-setAll(true);
-$('mapAll').addEventListener('click', () => { setAll(!mapState.all); if (mapState.area) updateMap(mapState.area); });
-['mSize', 'mMonths'].forEach((id) => $(id).addEventListener('change', () => { if (mapState.area) updateMap(mapState.area); }));
-['mReco', 'mColor'].forEach((id) => $(id).addEventListener('change', () => mapDraw()));
+['mSize', 'mMonths'].forEach((id) => $(id).addEventListener('change', () => onChange(true)));
+['mReco', 'mColor'].forEach((id) => $(id).addEventListener('change', () => onChange()));
 let mapTimer = null;
-['mMin', 'mMax', 'mBuilt'].forEach((id) => $(id).addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => mapDraw(), 400); }));
+['mMin', 'mMax', 'mBuilt'].forEach((id) => $(id).addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => onChange(), 400); }));
 async function runSearch(focus) {
   mapState.q = $('mapQ').value.trim();
-  if (mapState.q && mapState.data.length && !mapState.all && !mapState.data.some((c) => matchQ(c, mapState.q))) {
-    setAll(true);  // 선택 지역에 없으면 전체 구역에서 찾는다
-    try { await mapLoad(); } catch (e) { mapMsg('불러오지 못했습니다: ' + e.message); return; }
-  }
+  // 고른 지역에 없고 다른 지역에 있으면 지역 선택을 풀고 전체에서 보여준다
+  if (mapState.q && mapState.regions.size && !mapFiltered().length && mapFiltered(true).length) { mapState.regions.clear(); drawChips(); saveFilters(); }
   await mapDraw(focus);
 }
 $('mapQ').addEventListener('input', () => { clearTimeout(mapTimer); mapTimer = setTimeout(() => runSearch(false), 450); });
@@ -676,17 +741,23 @@ $('mapQ').addEventListener('change', () => runSearch(true));
 $('mapQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(mapTimer); runSearch(true); } });
 $('mapReset').addEventListener('click', () => {
   ['mMin', 'mMax', 'mBuilt', 'mapQ'].forEach((id) => { $(id).value = ''; });
-  $('mReco').value = 'all'; $('mapQ').dispatchEvent(new Event('change'));
+  $('mReco').value = 'all';
+  mapState.q = '';
+  mapState.regions.clear();
+  onChange();
 });
 
-loadKakao().then(() => {
+restoreFilters();
+drawChips();
+filterSummary();
+// 목록은 지도와 상관없이 먼저 띄우고, 지도가 준비되면 핀을 그린다
+const firstLoad = Promise.resolve().then(mapLoad).then(() => mapDraw()).catch((e) => { mapMsg('단지 목록을 불러오지 못했습니다: ' + e.message); $('mapCount').textContent = '불러오기 실패'; });
+loadKakao().then(async () => {
   mapState.map = new kakao.maps.Map($('map'), {center: new kakao.maps.LatLng(37.2, 127.07), level: 7});
   mapMsg('');
-  updateMap(DATA.areas.find((x) => x.key === sel.value) || DATA.areas[0]);
-}).catch((e) => {
-  mapMsg(e.message);
-  drawLegend(DATA.areas.find((x) => x.key === sel.value) || DATA.areas[0]);
-});
+  await firstLoad;
+  if (mapState.data.length) mapDraw();
+}).catch((e) => { mapMsg(e.message); });
 
 // ---- 방명록 (Supabase): 화면 위에 떠 있는 스티커 메모 ----
 const SB_URL = 'https://fpjgjwazqpfiffnsgume.supabase.co';
@@ -878,8 +949,9 @@ loadNotes();
   const g = (id) => document.getElementById(id);
   document.querySelectorAll('.tabs .tab').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('.tabs .tab').forEach((x) => x.classList.toggle('on', x === b));
-    ['Dash', 'Cx', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
-    if (b.dataset.tab === 'Dash') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
+    ['Find', 'Dash', 'Sum'].forEach((n) => { g('tab' + n).hidden = b.dataset.tab !== n; });
+    if (b.dataset.tab === 'Find') { try { if (mapState.map) mapState.map.relayout(); } catch (e) {} }
+    if (b.dataset.tab === 'Dash') { render(sel.value); rateChart(); }  // 숨겨진 상태에서는 차트 폭을 잴 수 없다
   }));
   const S = DATA.summary;
   if (!S) { document.querySelector('[data-tab="Sum"]').hidden = true; return; }
@@ -936,75 +1008,6 @@ loadNotes();
       '부터 확보). 신고가는 확보된 기간의 최고가라서 지금은 실제보다 낮게 잡혀 있고, 약 ' + (S.etaDays || '?') + '일 뒤(' +
       (eta.getMonth() + 1) + '월 ' + eta.getDate() + '일경) 2019년까지 적재가 끝나면 신고가 대비 수치가 정확해집니다.';
   } else { g('sumNote').hidden = true; }
-})();
-</script>
-<script>
-(function () {
-  const g = (id) => document.getElementById(id);
-  const U = 'https://fpjgjwazqpfiffnsgume.supabase.co';
-  const K = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwamdqd2F6cXBmaWZmbnNndW1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1OTczMzEsImV4cCI6MjEwMDE3MzMzMX0.u8M4GypmOadJONNLnYk7PozAXMVqGCaY2pwSysa7mNc';
-  const sel = g('cxArea'), q = g('cxQ'), tb = g('cxRows');
-  const groups = {};
-  DATA.areas.forEach((a, i) => {
-    let og = groups[a.group];
-    if (!og) { og = document.createElement('optgroup'); og.label = a.group; sel.appendChild(og); groups[a.group] = og; }
-    const o = document.createElement('option'); o.value = i; o.textContent = a.name; og.appendChild(o);
-  });
-  const allOpt = document.createElement('option'); allOpt.value = 'all'; allOpt.textContent = '전체 (모든 구역)';
-  sel.insertBefore(allOpt, sel.firstChild);
-  sel.selectedIndex = -1;
-  const allCodes = [...new Set(DATA.areas.flatMap((a) => a.codes))];
-  const sgn = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
-  const eok = (v) => (v / 10000).toFixed(2) + '억';
-  let rows = [], loaded = false, timer = null;
-  const state = {k: 'drop_pct', dir: -1};
-  function draw() {
-    tb.textContent = '';
-    rows.forEach((r) => {
-      const tr = document.createElement('tr');
-      const T = window.__td;
-      T(tr, (r.dong === '석우동' && !r.apt.startsWith('동탄') ? '동탄예당마을 ' : '') + r.apt).style.textAlign = 'left'; T(tr, r.dong); T(tr, r.build_year || '—');
-      T(tr, eok(r.last_price) + ' (' + String(r.last_date).slice(2, 7) + ')');
-      T(tr, sgn(r.chg_prev), r.chg_prev > 0 ? 'up' : r.chg_prev < 0 ? 'dn2' : '');
-      T(tr, eok(r.high) + ' (' + String(r.high_date).slice(2, 7) + ')');
-      T(tr, r.drop_pct > 0 ? '-' + r.drop_pct + '%' : '신고가', r.drop_pct > 0 ? 'sg good' : 'sg warn');
-      T(tr, r.med6 == null || !(r.cnt6 >= 3) ? '—' : eok(r.med6) + ' (' + r.cnt6 + '건)');
-      T(tr, r.gap == null ? '자료 부족' : sgn(r.gap) + ' ' + r.label, r.label === '싸다' ? 'sg good' : r.label === '비싸다' ? 'sg warn' : '');
-      T(tr, r.cnt30 + ' (직전30일 ' + r.cnt30_prev + ')');
-      tb.appendChild(tr);
-    });
-  }
-  async function load() {
-    if (sel.selectedIndex < 0) return;
-    const a = sel.value === 'all' ? {codes: allCodes, dongs: null} : DATA.areas[+sel.value];
-    let qv = q.value.trim(), dongs = a.dongs && a.dongs.length ? a.dongs : null;
-    if (/예당/.test(qv)) { qv = qv.replace(/동탄|예당마을|예당/g, '').trim(); dongs = ['석우동']; }  // 예당마을 = 석우동
-    g('cxMsg').textContent = '불러오는 중…';
-    try {
-      const res = await fetch(U + '/rest/v1/rpc/complex_overview', {
-        method: 'POST', headers: {apikey: K, Authorization: 'Bearer ' + K, 'Content-Type': 'application/json'},
-        body: JSON.stringify({p_sgg: a.codes, p_dongs: dongs, p_q: qv || null, p_limit: 1500, p_area_min: +g('cxSize').value.split('-')[0], p_area_max: +g('cxSize').value.split('-')[1]}),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data && data.message || res.status);
-      rows.length = 0; data.forEach((r) => { const f = fairOf(r); r.gap = f.gap; r.label = f.label; rows.push(r); });
-      if (!q.value.trim()) {
-        const dl = g('cxList'); dl.textContent = '';
-        [...new Set(rows.map((r) => r.apt))].sort().forEach((n) => { const o = document.createElement('option'); o.value = n; dl.appendChild(o); });
-      }
-      g('cxTable').hidden = !rows.length;
-      g('cxMsg').textContent = rows.length ? rows.length + '개 단지 · 열 제목을 눌러 정렬 · 신고가는 적재된 기간 기준 · 기대가는 최근 6개월 거래 중위가(3건 이상일 때)' + (g('cxSize').value === '83-86' ? '' : ' · 84㎡ 외 면적은 재적재가 끝난 기간만 포함') : '해당하는 단지가 없습니다.';
-      if (!loaded) { loaded = true; window.__sortBy(g('cxTable'), state, rows, draw); } else { resort(); }
-    } catch (e) { g('cxMsg').textContent = '불러오기 실패: ' + e.message; }
-  }
-  function resort() {
-    const k = state.k, d = state.dir;
-    rows.sort((x, y) => { const a = x[k], b = y[k]; if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1; return (typeof a === 'string' ? a.localeCompare(b, 'ko') : a - b) * d; });
-    draw();
-  }
-  sel.addEventListener('change', () => { q.value = ''; load(); });
-  g('cxSize').addEventListener('change', load);
-  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 350); });
 })();
 </script>
 
