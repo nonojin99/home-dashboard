@@ -41,6 +41,12 @@ jobs:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
         run: python build.py
+      - name: 건축물대장 갱신 (실패해도 페이지는 유지)
+        continue-on-error: true
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          BUYER_LISTINGS_PIN: ${{ secrets.BUYER_LISTINGS_PIN }}
+        run: python building.py
       - name: 주간 요약 메일 (월요일·수동 실행·커밋에 [mail] 포함 시)
         continue-on-error: true
         env:

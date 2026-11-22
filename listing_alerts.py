@@ -36,6 +36,25 @@ def gap(a, b):
     return None if not a or not b else round((a / b - 1) * 100, 1)
 
 
+def complex_key(c):
+    return f"{c.get('sgg_cd')}|{c.get('dong')}|{c.get('jibun')}|{c.get('apt')}"
+
+
+def attach_buildings(complexes):
+    keys = [complex_key(c) for c in complexes]
+    if not keys:
+        return complexes
+    try:
+        rows = rpc('building_info_lookup', {'p_keys': keys}) or []
+        by = {r.get('complex_key'): r for r in rows}
+        for c in complexes:
+            c['building'] = by.get(complex_key(c))
+            c['building_score'] = (c['building'] or {}).get('quality_score')
+    except Exception as e:
+        print(f"건축물대장 점수 조회 실패: {e}", file=sys.stderr)
+    return complexes
+
+
 def evaluate(x, complexes):
     apt = (x.get("apt") or "").strip().lower()
     dong = (x.get("dong") or "").strip()
@@ -47,20 +66,22 @@ def evaluate(x, complexes):
     fair_gap = gap(p, c.get("med6")) if c else None
     last_gap = gap(p, c.get("last_price")) if c else None
     high_gap = gap(p, c.get("high")) if c else None
-    score = 50.0
+    price_score = 50.0
     if fair_gap is not None:
-        score += max(-25, min(30, -fair_gap * 2.2))
+        price_score += max(-25, min(30, -fair_gap * 2.2))
     if last_gap is not None:
-        score += max(-12, min(15, -last_gap * 1.2))
+        price_score += max(-12, min(15, -last_gap * 1.2))
     if high_gap is not None:
-        score += max(0, min(10, -high_gap * 0.45))
-    score = max(0, min(100, round(score)))
+        price_score += max(0, min(10, -high_gap * 0.45))
+    price_score = max(0, min(100, round(price_score)))
+    building_score = int(c.get('building_score')) if c and c.get('building_score') is not None else None
+    score = price_score if building_score is None else round(price_score * 0.70 + building_score * 0.30)
     label = "강한 후보" if score >= 80 else "매수 검토" if score >= 65 else "관찰" if score >= 50 else "비쌈"
     hist = x.get("history") or []
     first = int(hist[0].get("price") or p) if hist else p
     cut = gap(p, first)
     return {"listing": x, "complex": c, "fair_gap": fair_gap, "last_gap": last_gap, "high_gap": high_gap,
-            "score": score, "label": label, "cut": cut}
+            "price_score": price_score, "building_score": building_score, "score": score, "label": label, "cut": cut}
 
 
 def main():
@@ -73,6 +94,7 @@ def main():
         codes = sorted({c for a in build.AREAS for c in build.as_codes(a[2])})
         complexes = rpc("map_complexes", {"p_sgg": codes, "p_dongs": None, "p_area_min": 83, "p_area_max": 86,
                                            "p_months": 6, "p_limit": 4000}) or []
+        complexes = attach_buildings(complexes)
     except Exception as e:
         print(f"관심 매물 조회 실패: {e}", file=sys.stderr)
         return 1
@@ -102,13 +124,14 @@ def main():
         link = f"<a href='{html.escape(x.get('url') or mail.SITE)}'>{html.escape(x['apt'])}</a>"
         trs.append(f"<tr><td style='{th}text-align:left'>{link}</td><td style='{th}'>{x['price']/10000:.2f}억</td>"
                    f"<td style='{th}'>{fair}</td><td style='{th}'>{cut}</td>"
+                   f"<td style='{th}'>{'—' if r['building_score'] is None else str(r['building_score'])+'점'}</td>"
                    f"<td style='{th};font-weight:700'>{r['score']} · {r['label']}</td></tr>")
         lines.append(f"{x['apt']} {x['price']/10000:.2f}억 / 기대가 {fair} / 최초가 {cut} / {r['score']} {r['label']}")
     body = ("<div style='font:14px/1.6 -apple-system,Apple SD Gothic Neo,sans-serif'>"
             f"<h3>관심 매물 매수 후보 {len(new)}건</h3>"
             f"<table style='border-collapse:collapse;font-size:13px'><tr><th style='{th}text-align:left'>매물</th>"
-            f"<th style='{th}'>호가</th><th style='{th}'>기대가 대비</th><th style='{th}'>최초가 대비</th><th style='{th}'>점수</th></tr>{''.join(trs)}</table>"
-            "<p style='font-size:12px;color:#6e6e73'>매수점수는 실거래 가격 비교용 휴리스틱입니다. 동·층·향·수리·권리관계는 별도 확인이 필요합니다.</p>"
+            f"<th style='{th}'>호가</th><th style='{th}'>기대가 대비</th><th style='{th}'>최초가 대비</th><th style='{th}'>건물</th><th style='{th}'>점수</th></tr>{''.join(trs)}</table>"
+            "<p style='font-size:12px;color:#6e6e73'>종합 매수점수는 가격 70% + 건물품질 30% 휴리스틱입니다. 동·층·향·수리·권리관계는 별도 확인이 필요합니다.</p>"
             f"<p><a href='{mail.SITE}'>대시보드 열기</a></p></div>")
     rc = mail.send(f"[부동산] 관심 매물 후보 {len(new)}건", "\n".join(lines), body)
     if rc == 0:

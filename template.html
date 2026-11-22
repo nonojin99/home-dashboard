@@ -148,7 +148,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
     <div class="map-info" id="mapInfo"></div>
     <h2 style="margin-top:18px">결과 목록 <span class="muted" id="mResNote">· 행을 누르면 지도에서 보여줍니다 · 열 제목으로 정렬</span></h2>
     <div class="tw"><table id="mRes">
-      <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="region">지역</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="gap">기대가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th></tr></thead>
+      <thead><tr><th class="sortable" data-k="apt" style="text-align:left">단지</th><th class="sortable" data-k="region">지역</th><th class="sortable" data-k="build_year">준공</th><th class="sortable" data-k="last_price">최근 거래가</th><th class="sortable" data-k="drop_pct">신고가 대비</th><th class="sortable" data-k="gap">기대가 대비</th><th class="sortable" data-k="cnt30">30일 거래</th><th class="sortable" data-k="building_score">건물</th></tr></thead>
       <tbody id="mResRows"></tbody>
     </table></div>
   </section>
@@ -175,7 +175,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
         <label class="wide">메모<textarea id="buyMemo" placeholder="동향, 수리 상태, 중개사 설명, 협상 가능 금액 등"></textarea></label>
       </div>
       <div class="buy-actions"><button class="primary" type="submit" id="buySave">매물 저장</button><button type="button" id="buyCancel" hidden>수정 취소</button><button type="button" id="buyExport">백업 JSON</button><label class="mini-btn" style="display:inline-flex;align-items:center">백업 불러오기<input id="buyImport" type="file" accept="application/json" hidden></label></div>
-      <div class="buy-note">매수점수는 호가와 최근 실거래·최근 6개월 중위가·신고가의 차이를 단순 규칙으로 계산합니다. 실제 매수 결정 전에는 동·층·향·수리비·권리관계를 별도로 확인하세요.</div>
+      <div class="buy-note">종합 매수점수는 가격점수 70% + 건물품질 30%로 계산합니다. 건축물대장이 아직 수집되지 않은 단지는 가격점수만 표시합니다. 실제 매수 결정 전에는 동·층·향·수리비·권리관계를 별도로 확인하세요.</div>
     </form>
   </section>
   <section>
@@ -188,7 +188,7 @@ td.up{color:var(--up)}td.dn2{color:var(--down)}
   </section>
   <section>
     <h2>매물 비교표</h2>
-    <div class="tw"><table id="buyTable"><thead><tr><th class="l">단지 / 메모</th><th>호가</th><th>최근 실거래</th><th>6개월 기대가</th><th>기대가 대비</th><th>신고가 대비</th><th>가격 변화</th><th>매수점수</th><th>관리</th></tr></thead><tbody id="buyRows"></tbody></table></div>
+    <div class="tw"><table id="buyTable"><thead><tr><th class="l">단지 / 메모</th><th>호가</th><th>최근 실거래</th><th>6개월 기대가</th><th>기대가 대비</th><th>신고가 대비</th><th>가격 변화</th><th>건물품질</th><th>종합 매수점수</th><th>관리</th></tr></thead><tbody id="buyRows"></tbody></table></div>
     <p class="muted" id="buyEmpty">등록한 관심 매물이 없습니다. 단지 찾기에서 단지를 선택한 뒤 ‘관심 매물에 추가’를 눌러도 됩니다.</p>
   </section>
 </div>
@@ -553,6 +553,19 @@ function filterSummary() {
   $('mFiltSum').textContent = '· ' + p.join(' · ');
 }
 
+function buildingKey(c) { return [c.sgg_cd || '', c.dong || '', c.jibun || '', c.apt || ''].join('|'); }
+function buildingText(b) {
+  if (!b) return '건축물대장 수집 대기';
+  const bits=[];
+  if (b.households) bits.push(Number(b.households).toLocaleString()+'세대');
+  if (b.parking_per_household != null) bits.push('세대당 주차 '+Number(b.parking_per_household).toFixed(2)+'대');
+  if (b.floor_area_ratio != null) bits.push('용적률 '+Number(b.floor_area_ratio).toFixed(0)+'%');
+  if (b.max_floor) bits.push('최고 '+b.max_floor+'층');
+  if (b.seismic === true) bits.push('내진 적용');
+  if (b.use_approval_date) bits.push('사용승인 '+String(b.use_approval_date).slice(0,4)+'년');
+  return bits.join(' · ') || '건축물대장 자료 일부 없음';
+}
+
 async function mapLoad() {
   const [lo, hi] = sizeRange(), months = +$('mMonths').value;
   const key = JSON.stringify([lo, hi, months]);
@@ -565,7 +578,17 @@ async function mapLoad() {
   });
   const data = await res.json();
   if (!res.ok) throw new Error((data && data.message) || res.status);
-  data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); });
+  data.forEach((c) => { const f = fairOf(c); c.gap = f.gap; c.label = f.label; c.region = regionLabel(c.sgg_cd); c.complex_key = buildingKey(c); });
+  try {
+    const br = await fetch(SB_URL + '/rest/v1/rpc/building_info_lookup', {
+      method:'POST', headers:{apikey:SB_KEY, Authorization:'Bearer '+SB_KEY, 'Content-Type':'application/json'},
+      body:JSON.stringify({p_keys:data.map(c=>c.complex_key)}),
+    });
+    if (br.ok) {
+      const rows = await br.json(), by = new Map(rows.map(x=>[x.complex_key,x]));
+      data.forEach(c => { c.building = by.get(c.complex_key) || null; c.building_score = c.building && c.building.quality_score != null ? Number(c.building.quality_score) : null; });
+    }
+  } catch(e) { console.warn('건축물대장 조회 실패', e); }
   mapState.data = data;
   mapState.loadKey = key;
   if (typeof buyRender === 'function') buyRender();
@@ -626,6 +649,9 @@ async function showInfo(c, zoneName) {
   fair.textContent = fo.gap == null ? '기대가: 최근 6개월 거래가 3건 미만이라 판정 불가'
     : `기대가 ${fmtEok(c.med6)} (최근 6개월 중위 · ${c.cnt6}건) · 최근가는 기대가 대비 ${sgn1(fo.gap)} → ${fo.label}`;
   fair.style.fontWeight = '600';
+  const bld = document.createElement('div');
+  bld.className = 'muted';
+  bld.textContent = c.building ? `건물품질 ${c.building_score ?? '—'}점 · ${buildingText(c.building)}` : '건물품질: 건축물대장 수집 대기';
   const wrap = document.createElement('div');
   wrap.className = 'scroll';
   wrap.textContent = '거래 내역 불러오는 중…';
@@ -642,7 +668,7 @@ async function showInfo(c, zoneName) {
   addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '12px'; addBuy.textContent = '관심 매물에 추가';
   addBuy.addEventListener('click', () => prefillListing(c));
   links.appendChild(addBuy);
-  box.append(title, meta, stat, fair, links, wrap);
+  box.append(title, meta, stat, fair, bld, links, wrap);
   try {
     const [lo, hi] = sizeRange();
     const res = await fetch(SB_URL + '/rest/v1/rpc/complex_trades', {
@@ -687,6 +713,7 @@ function drawList() {
     td(c.drop_pct > 0 ? '-' + c.drop_pct + '%' : '신고가', c.drop_pct >= 10 ? 'sg good' : c.drop_pct <= 0 ? 'sg warn' : '');
     td(c.gap == null ? '자료 부족' : sgn1(c.gap) + ' ' + c.label, c.label === '싸다' ? 'sg good' : c.label === '비싸다' ? 'sg warn' : '');
     td(c.cnt30 + ' (직전 ' + c.cnt30_prev + ')');
+    td(c.building_score == null ? '대기' : c.building_score + '점', c.building_score >= 70 ? 'sg good' : c.building_score != null && c.building_score < 45 ? 'sg warn' : '');
     tr.addEventListener('click', () => focusComplex(c));
     tb.appendChild(tr);
   });
@@ -870,13 +897,15 @@ function buyEval(x) {
   const fairGap = c && c.med6 ? pctGap(p, c.med6) : null;
   const lastGap = c && c.last_price ? pctGap(p, c.last_price) : null;
   const highGap = c && c.high ? pctGap(p, c.high) : null;
-  let score = 50;
-  if (fairGap != null) score += Math.max(-25, Math.min(30, -fairGap * 2.2));
-  if (lastGap != null) score += Math.max(-12, Math.min(15, -lastGap * 1.2));
-  if (highGap != null) score += Math.max(0, Math.min(10, -highGap * .45));
-  score = Math.max(0, Math.min(100, Math.round(score)));
+  let priceScore = 50;
+  if (fairGap != null) priceScore += Math.max(-25, Math.min(30, -fairGap * 2.2));
+  if (lastGap != null) priceScore += Math.max(-12, Math.min(15, -lastGap * 1.2));
+  if (highGap != null) priceScore += Math.max(0, Math.min(10, -highGap * .45));
+  priceScore = Math.max(0, Math.min(100, Math.round(priceScore)));
+  const buildingScore = c && c.building_score != null ? Number(c.building_score) : null;
+  const score = buildingScore == null ? priceScore : Math.round(priceScore * .70 + buildingScore * .30);
   const label = score >= 80 ? '강한 후보' : score >= 65 ? '매수 검토' : score >= 50 ? '관찰' : '비쌈';
-  return {c, fairGap, lastGap, highGap, score, label};
+  return {c, fairGap, lastGap, highGap, priceScore, buildingScore, score, label};
 }
 function buyReset() {
   ['buyId','buyApt','buyDong','buyPrice','buyFloor','buyUrl','buyMemo'].forEach((id) => { $(id).value = ''; });
@@ -907,7 +936,9 @@ function buyRender() {
     td(e.highGap==null?'—':sgn1(e.highGap), e.highGap!=null&&e.highGap<=-10?'sg good':'');
     const hc=td(chg==null?'—':sgn1(chg), chg<0?'sg good':chg>0?'sg warn':'');
     if(hist.length>1){const d=document.createElement('div');d.className='hist';d.textContent=hist.slice(-3).map(h=>String(h.at).slice(0,10)+' '+(Number(h.price)/10000).toFixed(2)+'억').join(' → ');hc.appendChild(d);}
-    td(e.score+' · '+e.label,'score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
+    const bc=td(e.buildingScore==null?'수집 대기':e.buildingScore+'점', e.buildingScore>=70?'sg good':e.buildingScore!=null&&e.buildingScore<45?'sg warn':'');
+    if(e.c && e.c.building){const d=document.createElement('div');d.className='hist';d.textContent=buildingText(e.c.building);bc.appendChild(d);}
+    td(e.score+' · '+e.label+' (가격 '+e.priceScore+')','score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
     const act=td('');
     const edit=document.createElement('button'); edit.type='button'; edit.className='mini-btn'; edit.textContent='수정'; edit.addEventListener('click',()=>buyEdit(x.id)); act.appendChild(edit);
     const del=document.createElement('button'); del.type='button'; del.className='mini-btn'; del.textContent='삭제'; del.style.marginLeft='4px'; del.addEventListener('click',()=>buyDelete(x.id)); act.appendChild(del);
