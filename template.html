@@ -809,7 +809,13 @@ async function showInfo(c, zoneName) {
     links.appendChild(a);
   });
   const addBuy = document.createElement('button');
-  addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '12px'; addBuy.textContent = '관심 매물에 추가';
+  addBuy.type = 'button'; addBuy.className = 'mini-btn'; addBuy.style.marginLeft = '6px'; addBuy.textContent = '실매물 등록';
+  const watchBtn = document.createElement('button');
+  watchBtn.type = 'button'; watchBtn.className = 'mini-btn'; watchBtn.style.marginLeft = '12px';
+  const paintWatch = () => { const w = findWatch(c); watchBtn.textContent = w ? '★ 관심 단지 (해제)' : '☆ 관심 단지'; watchBtn.classList.toggle('on', !!w); };
+  paintWatch();
+  watchBtn.addEventListener('click', async () => { watchBtn.disabled = true; try { await watchToggle(c); } finally { watchBtn.disabled = false; paintWatch(); } });
+  links.appendChild(watchBtn);
   links.appendChild(addBuy);
   const quick = quickAddBox(c);
   addBuy.addEventListener('click', () => { quick.hidden = !quick.hidden; if (!quick.hidden) quick.querySelector('input').focus(); });
@@ -1181,42 +1187,78 @@ function buyReset() {
   $('buyForm').dataset.source='manual'; $('buyForm').dataset.sourceId=''; $('buyMatchHint').replaceChildren();
 }
 // 단지 찾기에서 바로 관심 등록: 실매물(호가) 또는 관심 단지(목표가). 저장은 관심 매물 폼의 저장 경로를 그대로 쓴다.
+// 단지 찾기에서 실매물(호가) 바로 등록. 관심 단지는 ☆ 버튼 한 번으로 등록한다.
 function quickAddBox(c) {
   const box = document.createElement('div');
   box.className = 'quick-add'; box.hidden = true;
   box.style.cssText = 'margin:8px 0;padding:10px;border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:repeat(2,1fr);gap:8px';
   const mk = (label, el) => { const l = document.createElement('label'); l.style.cssText = 'font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px'; l.append(label, el); box.appendChild(l); return el; };
   const inp = (attrs) => { const e = document.createElement('input'); Object.assign(e, attrs); e.style.cssText = 'font:inherit;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg);width:100%;box-sizing:border-box'; return e; };
-  const kind = document.createElement('select');
-  kind.style.cssText = 'font:inherit;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--fg)';
-  [['listing', '실매물 (호가)'], ['watch', '관심 단지 (목표가)']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; kind.appendChild(o); });
-  mk('종류', kind);
   const price = mk('호가 (억)', inp({type: 'number', step: '0.01', min: '0', placeholder: c.last_price ? '최근 실거래 ' + (c.last_price / 10000).toFixed(2) : '예: 8.50'}));
   const floor = mk('층 (선택)', inp({type: 'number', step: '1', placeholder: '예: 12'}));
   const [lo, hi] = sizeRange();
   const area = mk('전용면적 (㎡)', inp({type: 'number', step: '0.01', value: hi - lo > 50 ? 84 : Math.round((lo + hi) / 2 * 10) / 10}));
-  kind.addEventListener('change', () => { price.parentNode.firstChild.textContent = kind.value === 'watch' ? '목표가 (억)' : '호가 (억)'; floor.parentNode.hidden = kind.value === 'watch'; });
-  const save = document.createElement('button'); save.type = 'button'; save.className = 'mini-btn'; save.textContent = '관심 매물에 저장';
-  save.style.cssText += ';background:var(--a);border-color:var(--a);color:#fff';
+  const save = document.createElement('button'); save.type = 'button'; save.className = 'mini-btn'; save.textContent = '실매물 저장';
+  save.style.cssText += ';background:var(--a);border-color:var(--a);color:#fff;align-self:end';
   const more = document.createElement('button'); more.type = 'button'; more.className = 'mini-btn'; more.textContent = '상세 입력 (관심 매물 탭)';
   const msg = document.createElement('div'); msg.className = 'muted'; msg.style.cssText = 'grid-column:1/-1;font-size:12px';
-  msg.textContent = '관심 단지는 매물이 없어도 "이 가격이면 산다"는 목표가로 등록합니다. 그 가격 이하 실거래가 나오면 알림 메일을 보냅니다.';
   box.append(save, more, msg);
   more.addEventListener('click', () => prefillListing(c));
   save.addEventListener('click', () => {
     const p = parseFloat(price.value);
-    if (!(p > 0)) { msg.textContent = (kind.value === 'watch' ? '목표가' : '호가') + '를 입력하세요.'; price.focus(); return; }
+    if (!(p > 0)) { msg.textContent = '호가를 입력하세요.'; price.focus(); return; }
     buyReset();
     $('buyApt').value = c.apt; $('buyDong').value = c.dong; $('buyPrice').value = p.toFixed(2);
-    $('buyArea').value = area.value || 84; $('buyFloor').value = kind.value === 'watch' ? '' : floor.value;
-    $('buyMemo').value = '';
-    $('buyForm').dataset.source = kind.value === 'watch' ? 'watch' : 'manual';
+    $('buyArea').value = area.value || 84; $('buyFloor').value = floor.value; $('buyMemo').value = '';
+    $('buyForm').dataset.source = 'manual';
     $('buyForm').requestSubmit();
-    msg.textContent = `저장했습니다: ${c.apt} ${kind.value === 'watch' ? '목표가' : '호가'} ${p.toFixed(2)}억 · 관심 매물 탭에서 확인할 수 있습니다.`;
+    msg.textContent = `저장했습니다: ${c.apt} 호가 ${p.toFixed(2)}억 · 관심 매물 탭에서 확인할 수 있습니다.`;
     price.value = '';
   });
   return box;
 }
+
+// ---- 관심 단지: 가격 입력 없이 등록. 적정가와 신호는 매번 실거래로 다시 계산한다 ----
+// 적정가 = 최근 6개월 거래 중위가(3건 이상). 거래가 적으면 최근 실거래가. '좋은 가격' = 적정가보다 5% 이상 낮음.
+function watchFair(c) {
+  if (!c) return null;
+  if (c.med6 && c.cnt6 >= 3) return {fair: c.med6, basis: `최근 6개월 중위가 · ${c.cnt6}건`};
+  if (c.last_price) return {fair: c.last_price, basis: '거래가 적어 최근 실거래가 기준'};
+  return null;
+}
+function watchSignals(c) {
+  const out = [], f = watchFair(c);
+  if (!c || !f) return out;
+  const g = pctGap(c.last_price, f.fair);
+  if (g != null && g <= -5) out.push({k: 'cheap', t: `적정가보다 ${Math.abs(g)}% 싼 거래`, good: true});
+  if (c.chg_prev != null && c.chg_prev <= -3) out.push({k: 'down', t: `직전 거래보다 ${Math.abs(c.chg_prev)}% 하락`, good: true});
+  if (c.cnt30 >= 3 && c.cnt30 >= 2 * Math.max(1, c.cnt30_prev)) out.push({k: 'hot', t: `거래 급증 (30일 ${c.cnt30}건, 직전 ${c.cnt30_prev}건)`});
+  if (c.drop_pct != null && c.drop_pct <= 0) out.push({k: 'high', t: '신고가 경신 — 가격 상승 중'});
+  return out;
+}
+function findWatch(c) {
+  const k = canonKey(c.apt);
+  return buyListings.find((x) => x.source === 'watch' && canonKey(x.apt) === k && (!x.dong || x.dong === c.dong)) || null;
+}
+async function watchToggle(c) {
+  const w = findWatch(c);
+  if (w) {
+    if (!confirm(`${c.apt}을(를) 관심 단지에서 뺄까요?`)) return;
+    if (buyCloud) { await buyRpc('buyer_listing_delete', {p_pin: buyPin, p_id: w.id}); await buyCloudLoad(); }
+    else { buyListings = buyListings.filter((x) => x.id !== w.id); buyPersist(); buyRender(); }
+    return;
+  }
+  const f = watchFair(c), now = new Date().toISOString();
+  const [lo, hi] = sizeRange();
+  // DB가 가격을 필수로 받아서, 등록 시점 적정가를 기록만 해 둔다(판단은 매번 다시 계산)
+  const base = {id: null, apt: c.apt, dong: c.dong, price: f ? f.fair : (c.last_price || 1), area: hi - lo > 50 ? 84 : Math.round((lo + hi) / 2 * 10) / 10,
+    floor: null, url: '', memo: '', source: 'watch', source_id: null, updated_at: now};
+  try {
+    if (buyCloud) { await buyCloudUpsert(base); await buyCloudLoad(); }
+    else { base.id = 'w' + Date.now().toString(36); base.created_at = now; base.history = []; buyListings.push(base); buyPersist(); buyRender(); }
+  } catch (e) { alert('관심 단지 저장 실패: ' + e.message); }
+}
+
 function prefillListing(c) {
   document.querySelectorAll('.tabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === 'Buy'));
   ['Find','Buy','Dash','Sum'].forEach((n) => { $('tab' + n).hidden = n !== 'Buy'; });
@@ -1274,17 +1316,21 @@ function buyRender() {
     const td = (text, cls) => { const d=document.createElement('td'); d.textContent=text; if(cls)d.className=cls; tr.appendChild(d); return d; };
     const name = td('', 'l');
     const strong = document.createElement('strong'); strong.textContent = x.apt + (x.dong ? ' · ' + x.dong : ''); name.appendChild(strong);
-    if (x.source === 'watch') { const t=document.createElement('div'); t.className='hist'; t.textContent='관심 단지 · 가격은 목표가 (매물 아님)'; name.appendChild(t); }
+    if (x.source === 'watch') { const t=document.createElement('div'); t.className='hist'; t.textContent='관심 단지 · 적정가는 자동 계산 (매물 아님)'; name.appendChild(t); }
     if (x.memo) { const m=document.createElement('div'); m.className='hist'; m.textContent=x.memo; name.appendChild(m); }
     if (x.url) { const a=document.createElement('a'); a.href=x.url; a.target='_blank'; a.rel='noopener noreferrer'; a.textContent='매물 링크 ↗'; a.style.display='block'; name.appendChild(a); }
-    td((x.price/10000).toFixed(2)+'억'); const lc=td(e.c ? fmtEok(e.c.last_price) : (buyDataFor(x) ? '단지 매칭 안됨 · 눌러서 연결' : '불러오는 중'), e.c ? '' : 'sg warn'); if(!e.c){lc.style.cursor='pointer';lc.addEventListener('click',()=>buyEdit(x.id));} td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
-    td(e.fairGap==null?'—':sgn1(e.fairGap), e.fairGap!=null&&e.fairGap<=-5?'sg good':e.fairGap!=null&&e.fairGap>=5?'sg warn':'');
-    td(e.highGap==null?'—':sgn1(e.highGap), (e.highGap!=null&&e.highGap<=-10?'sg good ':'')+'buy-table-hide-mobile');
+    td(isWatch(x) ? '관심 단지' : (x.price/10000).toFixed(2)+'억'); const lc=td(e.c ? fmtEok(e.c.last_price) : (buyDataFor(x) ? '단지 매칭 안됨 · 눌러서 연결' : '불러오는 중'), e.c ? '' : 'sg warn'); if(!e.c){lc.style.cursor='pointer';lc.addEventListener('click',()=>buyEdit(x.id));} td(e.c && e.c.med6 ? fmtEok(e.c.med6) : '—','buy-table-hide-mobile');
+    td(e.fairGap==null||isWatch(x)?'—':sgn1(e.fairGap), e.fairGap!=null&&e.fairGap<=-5?'sg good':e.fairGap!=null&&e.fairGap>=5?'sg warn':'');
+    td(e.highGap==null||isWatch(x)?'—':sgn1(e.highGap), (e.highGap!=null&&e.highGap<=-10?'sg good ':'')+'buy-table-hide-mobile');
     const hc=td(chg==null?'—':sgn1(chg), chg<0?'sg good':chg>0?'sg warn':'');
     if(hist.length>1){const d=document.createElement('div');d.className='hist';d.textContent=hist.slice(-3).map(h=>String(h.at).slice(0,10)+' '+(Number(h.price)/10000).toFixed(2)+'억').join(' → ');hc.appendChild(d);}
     const bc=td(e.buildingScore==null?'수집 대기':e.buildingScore+'점', (e.buildingScore>=70?'sg good ':e.buildingScore!=null&&e.buildingScore<45?'sg warn ':'')+'buy-table-hide-mobile');
     if(e.c && e.c.building){const d=document.createElement('div');d.className='hist';d.textContent=buildingText(e.c.building);bc.appendChild(d);}
-    if (isWatch(x)) td(e.lastGap==null?'관심 단지':'관심 단지 · 목표가가 최근 실거래 대비 '+sgn1(e.lastGap)+(e.lastGap>=0?' (도달)':''), 'score '+(e.lastGap!=null&&e.lastGap>=0?'good':'warn'));
+    if (isWatch(x)) {
+      const f = watchFair(e.c), sig = watchSignals(e.c);
+      const cell = td(f ? `적정가 ${fmtEok(f.fair)} · 최근 ${fmtEok(e.c.last_price)} (${sgn1(pctGap(e.c.last_price, f.fair))})` : '관심 단지 · 실거래 대기', 'score ' + (sig.some((v) => v.good) ? 'good' : 'warn'));
+      const d = document.createElement('div'); d.className = 'hist'; d.textContent = (f ? f.basis : '') + (sig.length ? ' · 신호: ' + sig.map((v) => v.t).join(', ') : ' · 특이 신호 없음'); cell.appendChild(d);
+    }
     else td(e.score+' · '+e.label+' (가격 '+e.priceScore+')','score '+(e.score>=65?'good':e.score<50?'bad':'warn'));
     const act=td('');
     const edit=document.createElement('button'); edit.type='button'; edit.className='mini-btn'; edit.textContent='수정'; edit.addEventListener('click',()=>buyEdit(x.id)); act.appendChild(edit);

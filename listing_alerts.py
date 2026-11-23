@@ -122,6 +122,33 @@ def evaluate(x, complexes):
             "price_score": price_score, "building_score": building_score, "score": score, "label": label, "cut": cut}
 
 
+def watch_fair(c):
+    if not c:
+        return None
+    if c.get("med6") and (c.get("cnt6") or 0) >= 3:
+        return int(c["med6"])
+    return int(c["last_price"]) if c.get("last_price") else None
+
+
+def watch_signals(c):
+    """페이지의 watchSignals()와 같은 규칙. (키, 설명) 목록."""
+    f = watch_fair(c)
+    if not c or not f:
+        return []
+    out = []
+    g = gap(c.get("last_price"), f)
+    if g is not None and g <= -5:
+        out.append(("cheap", f"적정가 {f/10000:.2f}억보다 {abs(g)}% 싼 거래 {int(c['last_price'])/10000:.2f}억"))
+    if c.get("chg_prev") is not None and float(c["chg_prev"]) <= -3:
+        out.append(("down", f"직전 거래보다 {abs(float(c['chg_prev']))}% 하락"))
+    n, p = c.get("cnt30") or 0, c.get("cnt30_prev") or 0
+    if n >= 3 and n >= 2 * max(1, p):
+        out.append(("hot", f"거래 급증 (30일 {n}건, 직전 {p}건)"))
+    if c.get("drop_pct") is not None and float(c["drop_pct"]) <= 0:
+        out.append(("high", "신고가 경신 — 가격 상승 중"))
+    return out
+
+
 def main():
     pin = os.environ.get("BUYER_LISTINGS_PIN", "")
     if not pin:
@@ -140,13 +167,12 @@ def main():
         print(f"관심 매물 조회 실패: {e}", file=sys.stderr)
         return 1
 
-    # 관심 단지(목표가): 매물이 아니라 "이 가격이면 산다". 목표가 이하 실거래가 신고되면 알린다.
+    # 관심 단지: 가격 입력 없이 등록. 적정가(6개월 중위가, 거래 적으면 최근가)와 신호를 매번 다시 계산한다.
     watch_hits = []
     for x in [v for v in listings if v.get("source") == "watch"]:
-        r = evaluate(x, by_range[area_range(x)])
-        c = r["complex"]
-        if c and c.get("last_price") and int(c["last_price"]) <= int(x["price"]):
-            watch_hits.append((x, c))
+        c = evaluate(x, by_range[area_range(x)])["complex"]
+        for sig in watch_signals(c):
+            watch_hits.append((x, c, sig))
     listings = [v for v in listings if v.get("source") != "watch"]
     rows = [evaluate(x, by_range[area_range(x)]) for x in listings]
     # 의미 있는 후보만: 매수 검토 이상 또는 최초가 대비 2%+ 인하
@@ -162,8 +188,9 @@ def main():
         return f"{x['id']}|{x['price']}|{r['label']}"
 
     new = [r for r in rows if k(r) not in seen]
-    wkey = lambda x, c: f"watch|{x['id']}|{c.get('last_date')}|{c.get('last_price')}"
-    watch_new = [(x, c) for x, c in watch_hits if wkey(x, c) not in seen]
+    # 같은 거래(최근 거래일)에 대한 같은 신호는 한 번만 보낸다
+    wkey = lambda x, c, sig: f"watch|{x['id']}|{sig[0]}|{c.get('last_date')}"
+    watch_new = [(x, c, sig) for x, c, sig in watch_hits if wkey(x, c, sig) not in seen]
     if not new and not watch_new:
         print(f"관심 매물 알림: 새 조건 충족 없음 (현재 {len(rows)}건)")
         return 0
@@ -183,19 +210,24 @@ def main():
         lines.append(f"{x['apt']} {x['price']/10000:.2f}억 / 기대가 {fair} / 최초가 {cut} / {r['score']} {r['label']}")
     wh = ""
     if watch_new:
-        wh = "<h3>목표가 이하 실거래 발생</h3><ul>" + "".join(
-            f"<li>{html.escape(x['apt'])} · 목표가 {int(x['price'])/10000:.2f}억 → 실거래 {int(c['last_price'])/10000:.2f}억 ({c.get('last_date')})</li>" for x, c in watch_new) + "</ul>"
-        lines += [f"[목표가] {x['apt']} 목표 {int(x['price'])/10000:.2f}억 / 실거래 {int(c['last_price'])/10000:.2f}억 ({c.get('last_date')})" for x, c in watch_new]
-    body = ("<div style='font:14px/1.6 -apple-system,Apple SD Gothic Neo,sans-serif'>" + wh +
-            f"<h3>관심 매물 매수 후보 {len(new)}건</h3>"
-            f"<table style='border-collapse:collapse;font-size:13px'><tr><th style='{th}text-align:left'>매물</th>"
-            f"<th style='{th}'>호가</th><th style='{th}'>기대가 대비</th><th style='{th}'>최초가 대비</th><th style='{th}'>건물</th><th style='{th}'>점수</th></tr>{''.join(trs)}</table>"
-            "<p style='font-size:12px;color:#6e6e73'>종합 매수점수는 가격 70% + 건물품질 30% 휴리스틱입니다. 동·층·향·수리·권리관계는 별도 확인이 필요합니다.</p>"
+        wh = "<h3>관심 단지 확인 필요</h3><ul>" + "".join(
+            f"<li><b>{html.escape(x['apt'])}</b> · {html.escape(sig[1])} (최근 거래 {c.get('last_date')})</li>" for x, c, sig in watch_new) + "</ul>"
+        lines += [f"[관심 단지] {x['apt']} · {sig[1]} ({c.get('last_date')})" for x, c, sig in watch_new]
+    table = ""
+    if new:
+        table = (f"<h3>관심 매물 매수 후보 {len(new)}건</h3>"
+                 f"<table style='border-collapse:collapse;font-size:13px'><tr><th style='{th}text-align:left'>매물</th>"
+                 f"<th style='{th}'>호가</th><th style='{th}'>기대가 대비</th><th style='{th}'>최초가 대비</th><th style='{th}'>건물</th><th style='{th}'>점수</th></tr>{''.join(trs)}</table>"
+                 "<p style='font-size:12px;color:#6e6e73'>종합 매수점수는 가격 70% + 건물품질 30% 휴리스틱입니다. 동·층·향·수리·권리관계는 별도 확인이 필요합니다.</p>")
+    if watch_new:
+        wh += "<p style='font-size:12px;color:#6e6e73'>관심 단지 적정가 = 최근 6개월 실거래 중위가(거래 3건 미만이면 최근 실거래가). 적정가보다 5% 이상 싼 거래, 직전 대비 3% 이상 하락, 거래 급증, 신고가 경신 시 알립니다.</p>"
+    body = ("<div style='font:14px/1.6 -apple-system,Apple SD Gothic Neo,sans-serif'>" + wh + table +
             f"<p><a href='{mail.SITE}'>대시보드 열기</a></p></div>")
-    subject = f"[부동산] 관심 매물 후보 {len(new)}건" + (f" · 목표가 도달 {len(watch_new)}건" if watch_new else "")
+    subject = ("[부동산] " + " · ".join(t for t in [f"관심 단지 신호 {len(watch_new)}건" if watch_new else "",
+                                                 f"관심 매물 후보 {len(new)}건" if new else ""] if t))
     rc = mail.send(subject, "\n".join(lines), body)
     if rc == 0:
-        SEEN.write_text(json.dumps(sorted(seen | {k(r) for r in new} | {wkey(x, c) for x, c in watch_new}), ensure_ascii=False), encoding="utf-8")
+        SEEN.write_text(json.dumps(sorted(seen | {k(r) for r in new} | {wkey(x, c, sig) for x, c, sig in watch_new}), ensure_ascii=False), encoding="utf-8")
     return rc
 
 
